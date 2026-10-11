@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#0b0f14" />
+  <meta name="description" content="AI Agent — a personal, installable AI chat PWA (BYOK)." />
+  <title>AI Agent</title>
+
+  <!-- PWA -->
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" type="image/svg+xml" href="icons/icon.svg" />
+  <link rel="apple-touch-icon" href="icons/icon.svg" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="AI Agent" />
+
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="app">
+    <!-- ===================== Sidebar / Settings ===================== -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar__header">
+        <div class="brand">
+          <span class="brand__logo">◈</span>
+          <div>
+            <h1>AI Agent</h1>
+            <p class="brand__sub">Personal AI · BYOK</p>
+          </div>
+        </div>
+        <button class="icon-btn" id="closeSidebar" aria-label="Close settings" title="Close">✕</button>
+      </div>
+
+      <!-- Provider selector -->
+      <section class="panel">
+        <h2 class="panel__title">Model / Provider</h2>
+        <label class="field">
+          <span class="field__label">Active provider</span>
+          <select id="providerSelect"></select>
+        </label>
+
+        <!-- Add custom provider (BYOK) -->
+        <details class="accordion" id="providerFormWrap">
+          <summary>＋ Add custom provider (BYOK)</summary>
+          <form id="providerForm" class="form" autocomplete="off">
+            <label class="field">
+              <span class="field__label">Provider name</span>
+              <input type="text" id="provName" placeholder="e.g. My OpenAI" required />
+            </label>
+            <label class="field">
+              <span class="field__label">Base URL</span>
+              <input type="url" id="provBaseUrl" placeholder="https://api.openai.com/v1" required />
+            </label>
+            <label class="field">
+              <span class="field__label">API key</span>
+              <input type="password" id="provApiKey" placeholder="sk-…" required />
+            </label>
+            <label class="field">
+              <span class="field__label">Model ID</span>
+              <input type="text" id="provModel" placeholder="gpt-4o-mini" required />
+            </label>
+            <p class="hint">
+              🔒 Your key is stored <strong>only</strong> in this browser's
+              <code>localStorage</code> and never hardcoded or logged. Later it can be
+              sent to the backend encrypted for multi-device sync.
+            </p>
+            <button type="submit" class="btn btn--primary">Save provider</button>
+            <button type="button" class="btn btn--ghost" id="removeProvider" hidden>Remove selected</button>
+          </form>
+        </details>
+      </section>
+
+      <!-- MCP settings -->
+      <section class="panel">
+        <h2 class="panel__title">MCP servers</h2>
+        <div class="mcp-status" id="mcpStatus">
+          <span class="dot dot--offline" id="mcpDot"></span>
+          <span id="mcpStatusText">Not connected — skeleton placeholder</span>
+        </div>
+        <p class="hint" id="mcpNote">
+          The backend will act as an MCP client and bridge to your existing phone-control
+          MCP server (and others). Tools will appear here once wired up.
+        </p>
+        <button type="button" class="btn btn--ghost" id="installBtn" hidden>Install app</button>
+      </section>
+
+      <div class="sidebar__footer">
+        <a href="#" id="clearChat" class="link">Clear chat</a>
+      </div>
+    </aside>
+
+    <!-- ===================== Main chat ===================== -->
+    <main class="chat">
+      <header class="chat__header">
+        <button class="icon-btn" id="openSidebar" aria-label="Open settings">☰</button>
+        <div class="chat__title">
+          <span id="activeModel">Local (mock)</span>
+          <span class="chat__status" id="chatStatus">offline · mock mode</span>
+        </div>
+      </header>
+
+      <div class="messages" id="messages" aria-live="polite"></div>
+
+      <form class="composer" id="composer">
+        <textarea
+          id="input"
+          rows="1"
+          placeholder="Message AI Agent… (Enter to send, Shift+Enter for newline)"
+        ></textarea>
+        <button type="submit" class="btn btn--primary composer__send" aria-label="Send">Send</button>
+      </form>
+    </main>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
