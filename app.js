@@ -398,13 +398,17 @@
       el.controls = true;
       el.preload = 'metadata';
       el.playsInline = true;
+      el.src = item.url;
     } else {
       el = document.createElement('img');
       el.loading = 'lazy';
       el.alt = 'Media';
+      el.src = item.url;
+      // Telegram serves files as application/octet-stream; re-fetch as a Blob
+      // with a sniffed mime so the <img> renders inline instead of downloading.
+      renderImageViaBlob(el, item.url);
     }
     el.className = 'msg__media-el';
-    el.src = item.url;
 
     const dl = document.createElement('a');
     dl.className = 'msg__media-dl';
@@ -417,6 +421,30 @@
     box.appendChild(el);
     box.appendChild(dl);
     return box;
+  }
+
+  // Fetch an image URL, sniff its real mime from the bytes, and set the <img>
+  // src to a Blob object URL so an octet-stream response still renders inline.
+  function renderImageViaBlob(img, url) {
+    fetch(url)
+      .then((resp) => {
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        return resp.arrayBuffer();
+      })
+      .then((buf) => {
+        const bytes = new Uint8Array(buf);
+        let mime = 'image/jpeg';
+        if (bytes[0] === 0xff && bytes[1] === 0xd8) mime = 'image/jpeg';
+        else if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) mime = 'image/png';
+        else if (bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46) mime = 'image/gif';
+        else if (bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46) mime = 'image/webp';
+        const blob = new Blob([buf], { type: mime });
+        img.src = URL.createObjectURL(blob);
+      })
+      .catch(() => {
+        // Fall back to the direct URL (e.g. if the fetch is blocked).
+        img.src = url;
+      });
   }
 
   // Tool-chip row rendered under an assistant message when the backend reports
