@@ -16,8 +16,9 @@
 
   // When true, chat calls the backend /api/chat. When false (default), the
   // local mock replies so the UI works with zero backend running.
-  const USE_BACKEND = false;
-  const BACKEND_CHAT_URL = '/api/chat';
+  const USE_BACKEND = true;
+  const BACKEND_BASE = 'https://ai-agent-backend.ai-agent-backend.workers.dev';
+  const BACKEND_CHAT_URL = BACKEND_BASE + '/api/chat';
 
   // Built-in local provider (no key required). Serves as the default.
   const LOCAL_PROVIDER = {
