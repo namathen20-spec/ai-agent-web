@@ -14,13 +14,11 @@
     messages: 'aiAgent.messages',
   };
 
-  // When true, chat calls the backend /api/chat. When false (default), the
-  // local mock replies so the UI works with zero backend running.
   const USE_BACKEND = true;
   const BACKEND_BASE = 'https://ai-agent-backend.ai-agent-backend.workers.dev';
   const BACKEND_CHAT_URL = BACKEND_BASE + '/api/chat';
+  const BACKEND_DEVICES_URL = BACKEND_BASE + '/api/devices';
 
-  // Built-in local provider (no key required). Serves as the default.
   const LOCAL_PROVIDER = {
     id: 'local',
     name: 'Local (mock)',
@@ -30,8 +28,19 @@
     builtin: true,
   };
 
+  // The phone-control MCP tools (shown for status; execution goes through the relay).
+  const MCP_TOOLS = [
+    { cat: '📷 Camera', tools: 'camera, photo, cam, screenshot, screen_touch, screen_record' },
+    { cat: '💬 Messaging', tools: 'read_sms, send_sms, read_call_log, find_contact, dial_number' },
+    { cat: '📱 Device', tools: 'battery, storage, network, phone_info, gps_on' },
+    { cat: '📂 Files & Media', tools: 'file_get, file_put, record_audio, camera_link, screenshot_link' },
+    { cat: '📜 Activity', tools: 'touch_feed, notifications, life_log_*' },
+    { cat: '🖥️ Screen', tools: 'live_start, live_stop, tap_screen, phone_echo' },
+  ];
+
   let providers = loadProviders();
   let activeId = localStorage.getItem(STORAGE_KEYS.activeId) || 'local';
+  let editingId = null; // provider id being edited (null = adding new)
 
   // ---------------------------------------------------------------------------
   // Persistence helpers
@@ -43,22 +52,19 @@
       const parsed = raw ? JSON.parse(raw) : null;
       if (Array.isArray(parsed) && parsed.length) return [LOCAL_PROVIDER, ...parsed.filter((p) => p && p.id !== 'local')];
     } catch (err) {
-      // Swallow corrupt data; start fresh. Never log the raw value (may contain keys).
       console.warn('Could not read saved providers; resetting.');
     }
     return [LOCAL_PROVIDER];
   }
 
   function saveProviders() {
-    // Never persist the builtin local provider, and never log key contents.
     const custom = providers.filter((p) => !p.builtin);
     localStorage.setItem(STORAGE_KEYS.providers, JSON.stringify(custom));
   }
 
   function loadMessages() {
     try {
-      const raw = localStorage.getItem(STORAGE_KEYS.messages);
-      return raw ? JSON.parse(raw) : [];
+      return JSON.parse(localStorage.getItem(STORAGE_KEYS.messages)) || [];
     } catch {
       return [];
     }
@@ -80,16 +86,21 @@
   const providerSelect = $('#providerSelect');
   const providerForm = $('#providerForm');
   const providerFormWrap = $('#providerFormWrap');
+  const providerFormTitle = $('#providerFormTitle');
   const removeProvider = $('#removeProvider');
+  const providerList = $('#providerList');
   const activeModel = $('#activeModel');
   const chatStatus = $('#chatStatus');
   const messagesEl = $('#messages');
   const composer = $('#composer');
   const input = $('#input');
   const clearChat = $('#clearChat');
+  const mcpStatusText = $('#mcpStatusText');
+  const mcpDot = $('#mcpDot');
+  const mcpToolsEl = $('#mcpTools');
 
   // ---------------------------------------------------------------------------
-  // Provider selector
+  // Provider selector + list (edit / delete)
   // ---------------------------------------------------------------------------
 
   function renderProviderSelect() {
@@ -102,6 +113,53 @@
     });
     providerSelect.value = activeId;
     syncHeader();
+    renderProviderList();
+  }
+
+  function renderProviderList() {
+    providerList.innerHTML = '';
+    const custom = providers.filter((p) => !p.builtin);
+    if (!custom.length) {
+      const empty = document.createElement('p');
+      empty.className = 'hint';
+      empty.textContent = 'No custom providers yet — add one below.';
+      providerList.appendChild(empty);
+      return;
+    }
+    custom.forEach((p) => {
+      const row = document.createElement('div');
+      row.className = 'prov-row';
+
+      const info = document.createElement('div');
+      info.className = 'prov-row__info';
+      info.innerHTML =
+        '<span class="prov-row__name"></span><span class="prov-row__model"></span>';
+      info.querySelector('.prov-row__name').textContent = p.name;
+      info.querySelector('.prov-row__model').textContent = p.model;
+
+      const btnGroup = document.createElement('div');
+      btnGroup.className = 'prov-row__btns';
+
+      const editBtn = document.createElement('button');
+      editBtn.type = 'button';
+      editBtn.className = 'icon-btn';
+      editBtn.title = 'Edit';
+      editBtn.textContent = '✎';
+      editBtn.addEventListener('click', () => startEditProvider(p.id));
+
+      const delBtn = document.createElement('button');
+      delBtn.type = 'button';
+      delBtn.className = 'icon-btn icon-btn--danger';
+      delBtn.title = 'Delete';
+      delBtn.textContent = '🗑';
+      delBtn.addEventListener('click', () => deleteProvider(p.id));
+
+      btnGroup.appendChild(editBtn);
+      btnGroup.appendChild(delBtn);
+      row.appendChild(info);
+      row.appendChild(btnGroup);
+      providerList.appendChild(row);
+    });
   }
 
   function syncHeader() {
@@ -109,8 +167,49 @@
     activeModel.textContent = p.builtin ? p.name : `${p.name} · ${p.model}`;
     chatStatus.textContent = p.builtin
       ? 'offline · mock mode'
-      : `${p.model} · BYOK ready (backend call is stubbed)`;
+      : `${p.model} · BYOK ready`;
     removeProvider.hidden = !!p.builtin;
+  }
+
+  function fillForm(p) {
+    $('#provName').value = p ? p.name : '';
+    $('#provBaseUrl').value = p ? p.baseUrl : '';
+    $('#provApiKey').value = p ? p.apiKey : '';
+    $('#provModel').value = p ? p.model : '';
+  }
+
+  function setFormMode(mode) {
+    editingId = mode === 'edit' ? activeId : null;
+    if (mode === 'edit') {
+      const p = getActiveProvider();
+      if (p && !p.builtin) {
+        fillForm(p);
+        providerFormTitle.textContent = '✎ Edit provider';
+        providerFormWrap.open = true;
+      }
+    } else {
+      editingId = null;
+      fillForm(null);
+      providerFormTitle.textContent = '＋ Add custom provider (BYOK)';
+    }
+  }
+
+  function startEditProvider(id) {
+    activeId = id;
+    localStorage.setItem(STORAGE_KEYS.activeId, activeId);
+    renderProviderSelect();
+    setFormMode('edit');
+  }
+
+  function deleteProvider(id) {
+    const p = providers.find((x) => x.id === id);
+    if (!p || p.builtin) return;
+    providers = providers.filter((x) => x.id !== id);
+    if (activeId === id) activeId = 'local';
+    localStorage.setItem(STORAGE_KEYS.activeId, activeId);
+    if (editingId === id) setFormMode('add');
+    saveProviders();
+    renderProviderSelect();
   }
 
   providerSelect.addEventListener('change', () => {
@@ -119,40 +218,37 @@
     syncHeader();
   });
 
-  // ---------------------------------------------------------------------------
-  // Provider form (BYOK)
-  // ---------------------------------------------------------------------------
-
   providerForm.addEventListener('submit', (e) => {
     e.preventDefault();
-
     const name = $('#provName').value.trim();
     const baseUrl = $('#provBaseUrl').value.trim();
     const apiKey = $('#provApiKey').value.trim();
     const model = $('#provModel').value.trim();
-
     if (!name || !baseUrl || !apiKey || !model) return;
 
-    const id = 'prov_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-    providers.push({ id, name, baseUrl, apiKey, model, builtin: false });
-    saveProviders();
-
-    activeId = id;
+    if (editingId) {
+      const p = providers.find((x) => x.id === editingId);
+      if (p) {
+        p.name = name;
+        p.baseUrl = baseUrl;
+        p.apiKey = apiKey;
+        p.model = model;
+      }
+    } else {
+      const id = 'prov_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+      providers.push({ id, name, baseUrl, apiKey, model, builtin: false });
+      activeId = id;
+    }
     localStorage.setItem(STORAGE_KEYS.activeId, activeId);
-
+    saveProviders();
     providerForm.reset();
     providerFormWrap.open = false;
+    setFormMode('add');
     renderProviderSelect();
   });
 
   removeProvider.addEventListener('click', () => {
-    const p = getActiveProvider();
-    if (!p || p.builtin) return;
-    providers = providers.filter((x) => x.id !== p.id);
-    activeId = 'local';
-    localStorage.setItem(STORAGE_KEYS.activeId, activeId);
-    saveProviders();
-    renderProviderSelect();
+    deleteProvider(activeId);
   });
 
   // ---------------------------------------------------------------------------
@@ -170,15 +266,12 @@
   function renderMessage(m) {
     const wrap = document.createElement('div');
     wrap.className = 'msg ' + (m.role === 'user' ? 'msg--user' : 'msg--assistant');
-
     const bubble = document.createElement('div');
     bubble.className = 'msg__bubble';
     bubble.textContent = m.content;
-
     const meta = document.createElement('div');
     meta.className = 'msg__meta';
     meta.textContent = m.role === 'user' ? 'You' : 'AI Agent' + (m.model ? ' · ' + m.model : '');
-
     wrap.appendChild(bubble);
     wrap.appendChild(meta);
     return wrap;
@@ -191,24 +284,22 @@
     saveMessages(messages);
   }
 
-  function localMockReply(userText, provider) {
-    if (provider.builtin) {
-      return (
-        '[mock] I\'m a local echo — no backend running. ' +
-        'You said: "' + userText.slice(0, 300) + '"\n\n' +
-        'Add a BYOK provider or run the backend, then flip USE_BACKEND=true in app.js to get real replies.'
-      );
-    }
-    return (
-      '[mock] Using provider "' + provider.name + '" (' + provider.model + ').\n\n' +
-      'You said: "' + userText.slice(0, 300) + '"\n\n' +
-      'This is a stubbed reply. Set USE_BACKEND=true in app.js and run the backend to route requests to ' +
-      provider.baseUrl + ' with your key.'
-    );
+  function showThinking() {
+    const wrap = document.createElement('div');
+    wrap.className = 'msg msg--assistant msg--thinking';
+    const bubble = document.createElement('div');
+    bubble.className = 'msg__bubble';
+    bubble.innerHTML = '<span class="thinking-dots"><i></i><i></i><i></i></span>';
+    const meta = document.createElement('div');
+    meta.className = 'msg__meta';
+    meta.textContent = 'AI Agent · thinking…';
+    wrap.appendChild(bubble);
+    wrap.appendChild(meta);
+    messagesEl.appendChild(wrap);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+    return wrap;
   }
 
-  // ---- Backend hook (ready, but unused while USE_BACKEND = false) ----
-  // Sends the active BYOK provider config + messages to POST /api/chat.
   async function callBackend(provider, msgs) {
     const res = await fetch(BACKEND_CHAT_URL, {
       method: 'POST',
@@ -237,26 +328,25 @@
 
     const provider = getActiveProvider();
     addMessage('user', text, provider.model);
-
     input.value = '';
+    input.style.height = 'auto';
     setComposerBusy(true);
 
     let reply;
+    const thinkingEl = showThinking();
     try {
       if (USE_BACKEND) {
-        // Real path: proxy through the backend so the key never leaves the browser unencrypted in this flow.
-        reply = await callBackend(provider, messages);
+        reply = await callBackend(provider, messages.slice(0, -1));
       } else {
-        // Simulate network latency so the UI feels real.
         await new Promise((r) => setTimeout(r, 350));
-        reply = localMockReply(text, provider);
+        reply = '[mock] ' + text;
       }
     } catch (err) {
       reply = '⚠️ Error: ' + (err && err.message ? err.message : err);
     } finally {
       setComposerBusy(false);
     }
-
+    thinkingEl.remove();
     addMessage('assistant', reply, provider.model);
   }
 
@@ -278,7 +368,6 @@
     }
   });
 
-  // Auto-grow textarea.
   input.addEventListener('input', () => {
     input.style.height = 'auto';
     input.style.height = Math.min(input.scrollHeight, 160) + 'px';
@@ -292,14 +381,49 @@
   });
 
   // ---------------------------------------------------------------------------
-  // MCP status placeholder (skeleton — backend bridge is TODO)
+  // MCP / phone status (from the backend relay)
   // ---------------------------------------------------------------------------
 
-  const mcpStatusText = $('#mcpStatusText');
-  const mcpDot = $('#mcpDot');
-  // Nothing to connect yet; this is where the backend MCP bridge status will live.
-  mcpStatusText.textContent = 'Not connected — backend MCP bridge is TODO';
-  mcpDot.className = 'dot dot--offline';
+  async function refreshMcpStatus() {
+    try {
+      const res = await fetch(BACKEND_DEVICES_URL);
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const data = await res.json();
+      const devices = Array.isArray(data.devices) ? data.devices : [];
+      const online = devices.filter((d) => d.online);
+      if (online.length) {
+        const names = online.map((d) => d.name || d.model || d.device_id).join(', ');
+        mcpStatusText.textContent = 'Connected — ' + names;
+        mcpDot.className = 'dot dot--online';
+      } else if (devices.length) {
+        mcpStatusText.textContent = 'Phone offline (' + devices.length + ' registered)';
+        mcpDot.className = 'dot dot--offline';
+      } else {
+        mcpStatusText.textContent = 'No phone registered yet';
+        mcpDot.className = 'dot dot--offline';
+      }
+    } catch (err) {
+      mcpStatusText.textContent = 'Backend unreachable';
+      mcpDot.className = 'dot dot--offline';
+    }
+  }
+
+  function renderMcpTools() {
+    mcpToolsEl.innerHTML = '';
+    MCP_TOOLS.forEach((group) => {
+      const li = document.createElement('li');
+      li.innerHTML =
+        '<span class="mcp-tool__cat"></span><span class="mcp-tool__names"></span>';
+      li.querySelector('.mcp-tool__cat').textContent = group.cat;
+      li.querySelector('.mcp-tool__names').textContent = group.tools;
+      mcpToolsEl.appendChild(li);
+    });
+  }
+
+  refreshMcpStatus();
+  renderMcpTools();
+  // Poll device status every 15s so the dot stays fresh.
+  setInterval(refreshMcpStatus, 15000);
 
   // ---------------------------------------------------------------------------
   // PWA install prompt
@@ -342,7 +466,6 @@
   renderMessages();
   input.focus();
 
-  // Mobile sidebar toggle.
   const sidebar = $('#sidebar');
   $('#openSidebar').addEventListener('click', () => sidebar.classList.add('sidebar--open'));
   $('#closeSidebar').addEventListener('click', () => sidebar.classList.remove('sidebar--open'));

@@ -40,9 +40,12 @@
           <select id="providerSelect"></select>
         </label>
 
-        <!-- Add custom provider (BYOK) -->
+        <!-- Saved providers (edit / delete) -->
+        <div class="prov-list" id="providerList"></div>
+
+        <!-- Add / edit custom provider (BYOK) -->
         <details class="accordion" id="providerFormWrap">
-          <summary>＋ Add custom provider (BYOK)</summary>
+          <summary id="providerFormTitle">＋ Add custom provider (BYOK)</summary>
           <form id="providerForm" class="form" autocomplete="off">
             <label class="field">
               <span class="field__label">Provider name</span>
@@ -76,11 +79,11 @@
         <h2 class="panel__title">MCP servers</h2>
         <div class="mcp-status" id="mcpStatus">
           <span class="dot dot--offline" id="mcpDot"></span>
-          <span id="mcpStatusText">Not connected — skeleton placeholder</span>
+          <span id="mcpStatusText">Connecting…</span>
         </div>
+        <ul class="mcp-tools" id="mcpTools"></ul>
         <p class="hint" id="mcpNote">
-          The backend will act as an MCP client and bridge to your existing phone-control
-          MCP server (and others). Tools will appear here once wired up.
+          Phone-control tools (via backend relay). Status updates every 15s.
         </p>
         <button type="button" class="btn btn--ghost" id="installBtn" hidden>Install app</button>
       </section>
