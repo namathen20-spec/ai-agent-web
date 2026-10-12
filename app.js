@@ -1003,9 +1003,85 @@
   }
 
   // ---------------------------------------------------------------------------
+  // Password gate (client-side lock screen)
+  // ---------------------------------------------------------------------------
+  const GATE_KEY = 'aiAgent.unlocked';
+  const GATE_PASSWORD = 'AI_AGENT';
+  const passwordGate = document.getElementById('passwordGate');
+  const gateForm = document.getElementById('gateForm');
+  const gatePassword = document.getElementById('gatePassword');
+  const gateError = document.getElementById('gateError');
+  const gateCard = passwordGate ? passwordGate.querySelector('.gate__card') : null;
+
+  function isUnlocked() {
+    try { return sessionStorage.getItem(GATE_KEY) === '1'; } catch { return false; }
+  }
+
+  function showGate() {
+    if (!passwordGate) return;
+    passwordGate.style.display = 'flex';
+    if (gatePassword) gatePassword.focus();
+  }
+
+  function hideGate() {
+    if (!passwordGate) return;
+    passwordGate.style.display = 'none';
+  }
+
+  function shakeGate() {
+    if (!gateCard) return;
+    gateCard.classList.remove('gate__card--shake');
+    void gateCard.offsetWidth; // force reflow so the animation can restart
+    gateCard.classList.add('gate__card--shake');
+  }
+
+  function failGate() {
+    if (gateError) gateError.classList.add('is-visible');
+    shakeGate();
+    if (gatePassword) {
+      gatePassword.value = '';
+      gatePassword.focus();
+    }
+  }
+
+  function initGate() {
+    if (!passwordGate || !gateForm) return;
+    if (isUnlocked()) hideGate();
+    else showGate();
+
+    gateForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      if (gatePassword && gatePassword.value === GATE_PASSWORD) {
+        try { sessionStorage.setItem(GATE_KEY, '1'); } catch { /* ignore */ }
+        if (gateError) gateError.classList.remove('is-visible');
+        hideGate();
+      } else {
+        failGate();
+      }
+    });
+
+    // Clear the error as soon as the user starts typing again.
+    if (gatePassword) {
+      gatePassword.addEventListener('input', () => {
+        if (gateError) gateError.classList.remove('is-visible');
+      });
+    }
+  }
+
+  // Lock / Logout affordance in the sidebar footer.
+  const lockApp = $('#lockApp');
+  if (lockApp) {
+    lockApp.addEventListener('click', () => {
+      try { sessionStorage.removeItem(GATE_KEY); } catch { /* ignore */ }
+      location.reload();
+    });
+  }
+
+  // ---------------------------------------------------------------------------
   // Boot
   // ---------------------------------------------------------------------------
 
+  initGate();
   initTheme();
   renderProviderSelect();
   renderMessages();

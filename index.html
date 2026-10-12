@@ -26,9 +26,30 @@
     })();
   </script>
 
-  <link rel="stylesheet" href="style.css?v=7" />
+  <link rel="stylesheet" href="style.css?v=8" />
 </head>
 <body>
+  <!-- ===================== Password gate (lock screen) ===================== -->
+  <div id="passwordGate" class="gate" role="dialog" aria-modal="true" aria-label="Unlock AI Agent">
+    <form class="gate__card" id="gateForm" autocomplete="off">
+      <div class="gate__lock" aria-hidden="true">🔒</div>
+      <h2 class="gate__title">AI Agent</h2>
+      <p class="gate__sub">This app is locked. Enter your password to continue.</p>
+      <input
+        type="password"
+        id="gatePassword"
+        class="gate__input"
+        placeholder="Password"
+        autocomplete="current-password"
+        spellcheck="false"
+        aria-label="Password"
+        required
+      />
+      <p class="gate__error" id="gateError" role="alert" aria-live="polite">❌ Wrong password</p>
+      <button type="submit" class="btn btn--primary gate__submit">Unlock</button>
+    </form>
+  </div>
+
   <div class="app">
     <!-- ===================== Sidebar / Settings ===================== -->
     <aside class="sidebar" id="sidebar">
@@ -108,6 +129,9 @@
 
       <div class="sidebar__footer">
         <a href="#" id="clearChat" class="link">Clear chat</a>
+        <button type="button" id="lockApp" class="link--lock" title="Lock / Logout" aria-label="Lock app">
+          🔒 Lock
+        </button>
       </div>
     </aside>
 
@@ -135,6 +159,6 @@
     </main>
   </div>
 
-  <script src="app.js?v=9"></script>
+  <script src="app.js?v=10"></script>
 </body>
 </html>

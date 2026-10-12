@@ -99,6 +99,87 @@ html, body {
 .app { display: flex; height: 100dvh; overflow: hidden; }
 
 /* =====================================================================
+   Password gate (full-screen lock overlay)
+   ===================================================================== */
+.gate {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: var(--bg);
+  background-image:
+    radial-gradient(1000px 600px at 50% -10%, rgba(79, 140, 255, 0.16), transparent 60%),
+    radial-gradient(800px 500px at 85% 110%, rgba(139, 92, 246, 0.14), transparent 60%);
+}
+
+.gate__card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  max-width: 360px;
+  padding: 32px 28px;
+  background: var(--panel);
+  border: 1px solid var(--border-soft);
+  border-radius: 22px;
+  box-shadow: var(--shadow);
+  text-align: center;
+}
+
+.gate__lock {
+  width: 64px;
+  height: 64px;
+  display: grid;
+  place-items: center;
+  font-size: 30px;
+  line-height: 1;
+  border-radius: 18px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-soft);
+}
+
+.gate__title {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.gate__sub {
+  margin: -6px 0 0;
+  font-size: 13.5px;
+  color: var(--text-dim);
+}
+
+.gate__input { text-align: center; }
+
+.gate__error {
+  display: none;
+  margin: -4px 0 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--danger);
+}
+.gate__error.is-visible { display: block; }
+
+.gate__submit { width: 100%; }
+
+/* shake the card when a wrong password is submitted */
+.gate__card--shake { animation: gateShake 0.42s var(--ease-out); }
+@keyframes gateShake {
+  0%, 100% { transform: translateX(0); }
+  20%      { transform: translateX(-10px); }
+  40%      { transform: translateX(9px); }
+  60%      { transform: translateX(-6px); }
+  80%      { transform: translateX(4px); }
+}
+
+/* =====================================================================
    Sidebar
    ===================================================================== */
 .sidebar {
@@ -355,7 +436,27 @@ select {
   margin-top: auto;
   padding: 8px 2px;
   border-top: 1px solid var(--border-soft);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
 }
+.link--lock {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  color: var(--text-dim);
+  font-size: 13px;
+  font-weight: 500;
+  font-family: inherit;
+  letter-spacing: 0.01em;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  transition: color 0.16s ease;
+}
+.link--lock:hover { color: var(--danger); }
 
 /* =====================================================================
    Chat
