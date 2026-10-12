@@ -656,6 +656,7 @@
             model: provider.model,
           },
           messages: msgs.map(({ role, content }) => ({ role, content })),
+          ...(selectedDeviceId ? { device_id: selectedDeviceId } : {}),
         }),
       });
     } catch (err) {
@@ -925,12 +926,41 @@
   // MCP / phone status (from the backend relay)
   // ---------------------------------------------------------------------------
 
+  const deviceSelect = $('#deviceSelect');
+  let selectedDeviceId = localStorage.getItem('aiAgent.deviceId') || '';
+
+  function populateDeviceSelect(devices) {
+    if (!deviceSelect) return;
+    const prev = selectedDeviceId;
+    deviceSelect.innerHTML = '';
+    const auto = document.createElement('option');
+    auto.value = '';
+    auto.textContent = '📱 Auto device';
+    deviceSelect.appendChild(auto);
+    devices.forEach((d) => {
+      const opt = document.createElement('option');
+      opt.value = d.device_id || d.id || '';
+      opt.textContent = (d.online ? '🟢 ' : '🔴 ') + (d.name || d.model || d.device_id || '?');
+      deviceSelect.appendChild(opt);
+    });
+    deviceSelect.value = prev;
+  }
+
+  if (deviceSelect) {
+    deviceSelect.addEventListener('change', () => {
+      selectedDeviceId = deviceSelect.value;
+      if (selectedDeviceId) localStorage.setItem('aiAgent.deviceId', selectedDeviceId);
+      else localStorage.removeItem('aiAgent.deviceId');
+    });
+  }
+
   async function refreshMcpStatus() {
     try {
       const res = await fetch(BACKEND_DEVICES_URL);
       if (!res.ok) throw new Error('HTTP ' + res.status);
       const data = await res.json();
       const devices = Array.isArray(data.devices) ? data.devices : [];
+      populateDeviceSelect(devices);
       const online = devices.filter((d) => d.online);
       if (online.length) {
         const names = online.map((d) => d.name || d.model || d.device_id).join(', ');
