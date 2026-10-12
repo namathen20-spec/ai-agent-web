@@ -99,6 +99,7 @@
   const mcpDot = $('#mcpDot');
   const mcpToolsEl = $('#mcpTools');
   const themeToggle = $('#themeToggle');
+  const micBtn = $('#micBtn');
 
   // ---------------------------------------------------------------------------
   // Provider selector + list (edit / delete)
@@ -279,7 +280,13 @@
     bubble.innerHTML = linkify(m.content);
     const meta = document.createElement('div');
     meta.className = 'msg__meta';
-    meta.textContent = m.role === 'user' ? 'You' : 'AI Agent' + (m.model ? ' · ' + m.model : '');
+    const metaLabel = document.createElement('span');
+    metaLabel.className = 'msg__meta-label';
+    metaLabel.textContent = m.role === 'user' ? 'You' : 'AI Agent' + (m.model ? ' · ' + m.model : '');
+    meta.appendChild(metaLabel);
+    if (m.role === 'assistant') {
+      meta.appendChild(createSpeakerButton(m));
+    }
     wrap.appendChild(bubble);
 
     // Inline media (data.media or bare URLs found in the reply) — assistant only.
@@ -435,14 +442,120 @@
     return row;
   }
 
-  function addMessage(role, content, model, tools, media) {
+  function addMessage(role, content, model, tools, media, animate) {
     const msg = { role, content, model };
     if (Array.isArray(tools) && tools.length) msg.tools = tools;
     if (Array.isArray(media) && media.length) msg.media = media;
     messages.push(msg);
-    messagesEl.appendChild(renderMessage(messages[messages.length - 1]));
+    const wrap = renderMessage(msg);
+    messagesEl.appendChild(wrap);
     messagesEl.scrollTop = messagesEl.scrollHeight;
     saveMessages(messages);
+    if (animate && role === 'assistant') {
+      const bubble = wrap.querySelector('.msg__bubble');
+      typeTextInto(bubble, content);
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Typewriter ("streaming") effect — only NEW assistant replies animate.
+  // Persisted messages render full via renderMessages(); this runs only when
+  // addMessage() is called with animate=true (i.e. a live backend reply).
+  // -------------------------------------------------------------------------
+  const TYPEWRITER_TICK = 3;  // ms between reveals (~3ms/char)
+  const TYPEWRITER_CHARS = 1; // characters revealed per tick
+  const TYPING_CARET = '<span class="typing-caret" aria-hidden="true">▍</span>';
+
+  function prefersReducedMotion() {
+    return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  }
+
+  function finishTyping(bubble) {
+    const state = bubble && bubble._typing;
+    if (!state || state.done) return;
+    state.done = true;
+    if (state.timer) clearInterval(state.timer);
+    bubble.innerHTML = linkify(state.full);
+    bubble.classList.remove('msg__bubble--typing');
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+
+  function typeTextInto(bubble, text) {
+    const full = String(text || '');
+    // Respect reduced-motion: reveal the whole term instantly, no loop.
+    if (prefersReducedMotion()) {
+      bubble.innerHTML = linkify(full);
+      return;
+    }
+    const state = { full, done: false, timer: null };
+    bubble._typing = state;
+    bubble.classList.add('msg__bubble--typing');
+    bubble.innerHTML = '';
+    let i = 0;
+    state.timer = setInterval(() => {
+      i += TYPEWRITER_CHARS;
+      if (i >= full.length) {
+        finishTyping(bubble);
+        return;
+      }
+      bubble.innerHTML = linkify(full.slice(0, i)) + TYPING_CARET;
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    }, TYPEWRITER_TICK);
+  }
+
+  // Clicking a still-typing bubble reveals the full text immediately.
+  messagesEl.addEventListener('click', (e) => {
+    const bubble = e.target && e.target.closest ? e.target.closest('.msg__bubble') : null;
+    if (bubble && bubble._typing && !bubble._typing.done) finishTyping(bubble);
+  });
+
+  // -------------------------------------------------------------------------
+  // Text-to-speech (TTS, Tamil) — a speaker button per assistant message.
+  // -------------------------------------------------------------------------
+  let activeSpeaker = null;
+
+  function createSpeakerButton(m) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'msg__speak';
+    btn.textContent = '🔊';
+    btn.title = 'Read aloud (Tamil)';
+    btn.setAttribute('aria-label', 'Read aloud (Tamil)');
+    btn.setAttribute('aria-pressed', 'false');
+    btn.addEventListener('click', () => speakText(m.content, btn));
+    return btn;
+  }
+
+  function updateSpeakerUI(btn, active) {
+    btn.classList.toggle('msg__speak--active', active);
+    btn.textContent = active ? '⏹' : '🔊';
+    btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+    btn.setAttribute('aria-label', active ? 'Stop reading' : 'Read aloud (Tamil)');
+    btn.title = active ? 'Stop reading' : 'Read aloud (Tamil)';
+  }
+
+  function speakText(text, btn) {
+    if (!('speechSynthesis' in window) || typeof SpeechSynthesisUtterance === 'undefined') {
+      toast('🔇 Voice output is not supported in this browser');
+      return;
+    }
+    // Clicking the currently-playing button → stop.
+    if (activeSpeaker === btn) {
+      speechSynthesis.cancel();
+      return;
+    }
+    // Cancel any existing speech first, then speak fresh text.
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(String(text || ''));
+    u.lang = 'ta-IN';
+    const voices = speechSynthesis.getVoices();
+    const taVoice = voices.find((v) => /^ta\b/i.test(v.lang)) ||
+      voices.find((v) => /tamil/i.test(v.lang));
+    if (taVoice) u.voice = taVoice;
+    u.onstart = () => { activeSpeaker = btn; updateSpeakerUI(btn, true); };
+    u.onend = () => { if (activeSpeaker === btn) activeSpeaker = null; updateSpeakerUI(btn, false); };
+    u.onerror = () => { if (activeSpeaker === btn) activeSpeaker = null; updateSpeakerUI(btn, false); };
+    speechSynthesis.speak(u);
   }
 
   function showThinking() {
@@ -601,7 +714,7 @@
     }
 
     thinkingEl.remove();
-    addMessage('assistant', reply, provider.model, toolsUsed, mediaUsed);
+    addMessage('assistant', reply, provider.model, toolsUsed, mediaUsed, true);
 
     if (!ok) {
       // Re-insert the draft on error so the user's message is never lost.
@@ -635,6 +748,89 @@
     input.style.height = 'auto';
     input.style.height = Math.min(input.scrollHeight, 160) + 'px';
   });
+
+  // -------------------------------------------------------------------------
+  // Voice input (STT, Tamil) — microphone button in the composer.
+  // -------------------------------------------------------------------------
+  const SpeechRecognitionImpl = window.SpeechRecognition || window.webkitSpeechRecognition;
+  let recognition = null;
+  let isListening = false;
+
+  function setListening(on) {
+    isListening = on;
+    if (!micBtn) return;
+    micBtn.classList.toggle('composer__mic--active', on);
+    micBtn.classList.toggle('is-listening', on);
+    micBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    micBtn.setAttribute('aria-label', on ? 'Stop voice input' : 'Voice input (Tamil)');
+    micBtn.title = on ? 'Stop voice input' : 'Voice input (Tamil)';
+    micBtn.textContent = on ? '🔴' : '🎤';
+  }
+
+  function toggleMic() {
+    if (!recognition) {
+      toast('🎤 Voice input not supported in this browser');
+      return;
+    }
+    if (isListening) {
+      try { recognition.stop(); } catch (err) { /* ignore */ }
+      return;
+    }
+    try {
+      recognition.start();
+      setListening(true);
+    } catch (err) {
+      // start() throws if a session is already active; fall back to idle state.
+      setListening(false);
+    }
+  }
+
+  function initVoiceInput() {
+    if (!micBtn) return;
+    if (!SpeechRecognitionImpl) {
+      micBtn.disabled = true;
+      micBtn.classList.add('composer__mic--unsupported');
+      micBtn.title = 'Voice input not supported in this browser';
+      micBtn.setAttribute('aria-label', micBtn.title);
+      toast('🎤 Voice input not supported in this browser');
+      return;
+    }
+
+    recognition = new SpeechRecognitionImpl();
+    recognition.lang = 'ta-IN';
+    recognition.interimResults = true;
+    recognition.continuous = false;
+
+    recognition.onresult = (event) => {
+      let interim = '';
+      let final = '';
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const res = event.results[i];
+        if (res.isFinal) final += res[0].transcript;
+        else interim += res[0].transcript;
+      }
+      if (final) {
+        input.value = final;
+        input.dispatchEvent(new Event('input'));
+        input.focus(); // focus but never auto-send
+      } else if (interim) {
+        input.value = interim;
+        input.dispatchEvent(new Event('input'));
+      }
+    };
+
+    recognition.onend = () => setListening(false);
+    recognition.onerror = (event) => {
+      setListening(false);
+      if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+        toast('🎤 Microphone access denied');
+      } else if (event.error !== 'aborted' && event.error !== 'no-speech') {
+        toast('🎤 Voice input error');
+      }
+    };
+
+    micBtn.addEventListener('click', toggleMic);
+  }
 
   // Transient confirmation toast (inline styles only — no new CSS required).
   function toast(message) {
@@ -777,6 +973,7 @@
   renderProviderSelect();
   renderMessages();
   input.focus();
+  initVoiceInput();
 
   const sidebar = $('#sidebar');
   $('#openSidebar').addEventListener('click', () => sidebar.classList.add('sidebar--open'));
