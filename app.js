@@ -639,6 +639,11 @@
     try { data = await res.json(); } catch { data = null; }
 
     if (!res.ok) {
+      if (data && data.rate_limited) {
+        // Backend signalled a provider rate limit — carry the retry info up so
+        // handleSend can auto-retry after the cooldown.
+        return { rateLimited: true, retryAfter: data.retry_after || 60, error: data.error };
+      }
       const detail = (data && (data.error || data.message)) || ('HTTP ' + res.status);
       throw errWithKind(classifyError(res.status, detail), String(detail));
     }
@@ -646,10 +651,29 @@
     const reply = (data && data.reply && data.reply.content) || '(no content)';
     const tools = data && Array.isArray(data.tools_used) ? data.tools_used : [];
     const media = data && Array.isArray(data.media) ? data.media : [];
-    return { content: reply, tools, media };
+    return { content: reply, tools, media, rateLimited: false };
   }
 
   let isBusy = false;
+
+  // Show a live countdown in the thinking bubble and resolve after `seconds`.
+  function countdownForRetry(seconds, thinkingEl) {
+    let remaining = seconds;
+    const bubble = thinkingEl && thinkingEl.querySelector('.msg__bubble');
+    const meta = thinkingEl && thinkingEl.querySelector('.msg__meta');
+    return new Promise((resolve) => {
+      const tick = () => {
+        if (bubble) {
+          bubble.innerHTML = '<span class="counting-label">⏳ Rate limit — ' + remaining + 's la auto-retry…</span>';
+        }
+        if (meta) meta.textContent = 'AI Agent · retrying…';
+        if (remaining <= 0) { resolve(); return; }
+        remaining--;
+        setTimeout(tick, 1000);
+      };
+      tick();
+    });
+  }
 
   async function handleSend() {
     if (isBusy) return; // ignore rapid/duplicate sends while a request is in flight
@@ -698,15 +722,28 @@
     const thinkingEl = showThinking();
     try {
       if (USE_BACKEND) {
-        const result = await callBackend(provider, history);
-        reply = result.content;
-        toolsUsed = Array.isArray(result.tools) ? result.tools : [];
-        mediaUsed = Array.isArray(result.media) ? result.media : [];
+        // Auto-retry loop: on a provider rate limit, wait the cooldown and
+        // re-send automatically (up to 3 attempts).
+        for (let attempt = 1; attempt <= 3; attempt++) {
+          const result = await callBackend(provider, history);
+          if (!result.rateLimited) {
+            reply = result.content;
+            toolsUsed = Array.isArray(result.tools) ? result.tools : [];
+            mediaUsed = Array.isArray(result.media) ? result.media : [];
+            ok = true;
+            break;
+          }
+          if (attempt === 3) {
+            reply = '⏳ Rate limit innum irukku — konjam neram wait pannu, appuram try pannu.';
+            break;
+          }
+          await countdownForRetry(Math.min(result.retryAfter || 60, 120), thinkingEl);
+        }
       } else {
         await new Promise((r) => setTimeout(r, 350));
         reply = '[mock] ' + text;
+        ok = true;
       }
-      ok = true;
     } catch (err) {
       reply = formatError(err);
     } finally {
