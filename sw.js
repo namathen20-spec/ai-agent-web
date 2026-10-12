@@ -1,5 +1,5 @@
-/* Minimal cache-first service worker for offline app shell. */
-const CACHE_NAME = 'ai-agent-v1';
+/* Network-first service worker (offline fallback). */
+const CACHE_NAME = 'ai-agent-v2';
 const APP_SHELL = [
   './',
   './index.html',
@@ -30,17 +30,17 @@ self.addEventListener('fetch', (event) => {
   // Never intercept API calls — they must always reach the backend.
   if (request.method !== 'GET' || request.url.includes('/api/')) return;
 
+  // Network-first: always try the network so updates propagate, fall back to
+  // cache only when offline.
   event.respondWith(
-    caches.match(request).then((cached) => {
-      if (cached) return cached;
-      return fetch(request).then((response) => {
-        const copy = response.clone();
-        // Cache same-origin static assets only.
+    fetch(request)
+      .then((response) => {
         if (response.ok && request.url.startsWith(self.location.origin)) {
+          const copy = response.clone();
           caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
         }
         return response;
-      });
-    })
+      })
+      .catch(() => caches.match(request).then((cached) => cached || Response.error()))
   );
 });
