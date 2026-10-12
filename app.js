@@ -98,6 +98,7 @@
   const mcpStatusText = $('#mcpStatusText');
   const mcpDot = $('#mcpDot');
   const mcpToolsEl = $('#mcpTools');
+  const themeToggle = $('#themeToggle');
 
   // ---------------------------------------------------------------------------
   // Provider selector + list (edit / delete)
@@ -275,11 +276,23 @@
     wrap.className = 'msg ' + (m.role === 'user' ? 'msg--user' : 'msg--assistant');
     const bubble = document.createElement('div');
     bubble.className = 'msg__bubble';
-    bubble.textContent = m.content;
+    bubble.innerHTML = linkify(m.content);
     const meta = document.createElement('div');
     meta.className = 'msg__meta';
     meta.textContent = m.role === 'user' ? 'You' : 'AI Agent' + (m.model ? ' · ' + m.model : '');
     wrap.appendChild(bubble);
+
+    // Inline media (data.media or bare URLs found in the reply) — assistant only.
+    if (m.role === 'assistant') {
+      const mediaItems = buildMediaList(m);
+      if (mediaItems.length) {
+        const mediaWrap = document.createElement('div');
+        mediaWrap.className = 'msg__media';
+        mediaItems.forEach((item) => mediaWrap.appendChild(createMediaItem(item)));
+        wrap.appendChild(mediaWrap);
+      }
+    }
+
     wrap.appendChild(meta);
     if (Array.isArray(m.tools) && m.tools.length) {
       wrap.appendChild(renderToolChips(m.tools));
@@ -287,37 +300,145 @@
     return wrap;
   }
 
-  // Subtle tool-chip row rendered under an assistant message when the backend
-  // reports tools were invoked (data.tools_used). Inline styles only so we don't
-  // depend on new CSS in style.css.
+  // -------------------------------------------------------------------------
+  // URL / media helpers
+  // -------------------------------------------------------------------------
+
+  const URL_SCAN_RE = /https?:\/\/[^\s"'<>]+/gi;
+  const MEDIA_EXT_RE = /\.(?:jpe?g|png|gif|webp|mp4|mov|webm|m4v)(?:[?#]|$)/i;
+  const TELEGRAM_FILE_RE = /telegram\.org\/file\/bot/i;
+
+  function escapeHtml(s) {
+    return String(s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  // Make bare URLs in a message clickable while keeping the rest plain text.
+  function linkify(text) {
+    const str = String(text || '');
+    const re = new RegExp(URL_SCAN_RE.source, 'gi');
+    const out = [];
+    let last = 0;
+    let m;
+    while ((m = re.exec(str)) !== null) {
+      if (m.index > last) out.push(escapeHtml(str.slice(last, m.index)));
+      const url = m[0];
+      out.push(
+        '<a class="msg__link" href="' + escapeHtml(url) + '" target="_blank" rel="noopener noreferrer">' +
+        escapeHtml(url) + '</a>'
+      );
+      last = re.lastIndex;
+    }
+    out.push(escapeHtml(str.slice(last)));
+    return out.join('');
+  }
+
+  function isMediaUrl(url) {
+    return MEDIA_EXT_RE.test(url) || TELEGRAM_FILE_RE.test(url);
+  }
+
+  function mediaTypeFromUrl(url) {
+    return /\.(?:mp4|mov|webm|m4v)(?:[?#]|$)/i.test(url) ? 'video' : 'image';
+  }
+
+  function cleanUrl(url) {
+    return url.replace(/[.,;:!?'")\]}>]+$/, '');
+  }
+
+  // Combine explicit data.media + bare media URLs from the reply text (deduped),
+  // so media renders even when the backend omits the `media` field.
+  function buildMediaList(m) {
+    const items = [];
+    const seen = new Set();
+    const push = (url, type) => {
+      url = cleanUrl(String(url || '').trim());
+      if (!url || seen.has(url)) return;
+      seen.add(url);
+      let kind = 'image';
+      if (type === 'video' || type === 'image') kind = type;
+      else kind = mediaTypeFromUrl(url);
+      items.push({ url, type: kind });
+    };
+
+    if (Array.isArray(m.media)) {
+      m.media.forEach((it) => {
+        if (it && typeof it.url === 'string') push(it.url, it.type);
+      });
+    }
+
+    if (typeof m.content === 'string') {
+      const re = new RegExp(URL_SCAN_RE.source, 'gi');
+      let mm;
+      while ((mm = re.exec(m.content)) !== null) {
+        const url = cleanUrl(mm[0]);
+        if (isMediaUrl(url)) push(url, mediaTypeFromUrl(url));
+      }
+    }
+    return items;
+  }
+
+  function createMediaItem(item) {
+    const box = document.createElement('div');
+    box.className = 'msg__media-item';
+
+    let el;
+    if (item.type === 'video') {
+      el = document.createElement('video');
+      el.controls = true;
+      el.preload = 'metadata';
+      el.playsInline = true;
+    } else {
+      el = document.createElement('img');
+      el.loading = 'lazy';
+      el.alt = 'Media';
+    }
+    el.className = 'msg__media-el';
+    el.src = item.url;
+
+    const dl = document.createElement('a');
+    dl.className = 'msg__media-dl';
+    dl.href = item.url;
+    dl.target = '_blank';
+    dl.rel = 'noopener noreferrer';
+    dl.download = '';
+    dl.textContent = '⬇ Download';
+
+    box.appendChild(el);
+    box.appendChild(dl);
+    return box;
+  }
+
+  // Tool-chip row rendered under an assistant message when the backend reports
+  // tools were invoked (data.tools_used). Chips stagger in via CSS animation.
   function renderToolChips(tools) {
     const row = document.createElement('div');
     row.className = 'msg__tools';
-    row.style.cssText =
-      'display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;align-items:center;';
 
     const icon = document.createElement('span');
+    icon.className = 'msg__tools-icon';
     icon.textContent = '🔧';
     icon.title = 'Tools used';
-    icon.style.cssText = 'font-size:12px;line-height:20px;color:#8b98a9;';
     row.appendChild(icon);
 
-    tools.forEach((tool) => {
+    tools.forEach((tool, i) => {
       const chip = document.createElement('span');
       chip.className = 'msg__tool';
       chip.textContent = tool;
-      chip.style.cssText =
-        'font-size:11px;line-height:20px;padding:0 8px;border-radius:999px;' +
-        'background:#1f3a5f;color:#7aa5ff;border:1px solid #263140;';
+      chip.style.animationDelay = i * 70 + 'ms';
       row.appendChild(chip);
     });
 
     return row;
   }
 
-  function addMessage(role, content, model, tools) {
+  function addMessage(role, content, model, tools, media) {
     const msg = { role, content, model };
     if (Array.isArray(tools) && tools.length) msg.tools = tools;
+    if (Array.isArray(media) && media.length) msg.media = media;
     messages.push(msg);
     messagesEl.appendChild(renderMessage(messages[messages.length - 1]));
     messagesEl.scrollTop = messagesEl.scrollHeight;
@@ -329,7 +450,15 @@
     wrap.className = 'msg msg--assistant msg--thinking';
     const bubble = document.createElement('div');
     bubble.className = 'msg__bubble';
-    bubble.innerHTML = '<span class="thinking-dots"><i></i><i></i><i></i></span>';
+    bubble.innerHTML =
+      '<span class="thinking-dots"><i></i><i></i><i></i></span>' +
+      '<span class="thinking-tools">' +
+        '<span class="thinking-tools__label">AI working</span>' +
+        '<span class="thinking-tools__chip">🔧</span>' +
+        '<span class="thinking-tools__chip">📷</span>' +
+        '<span class="thinking-tools__chip">💬</span>' +
+        '<span class="thinking-tools__chip">📱</span>' +
+      '</span>';
     const meta = document.createElement('div');
     meta.className = 'msg__meta';
     meta.textContent = 'AI Agent · thinking…';
@@ -403,7 +532,8 @@
 
     const reply = (data && data.reply && data.reply.content) || '(no content)';
     const tools = data && Array.isArray(data.tools_used) ? data.tools_used : [];
-    return { content: reply, tools };
+    const media = data && Array.isArray(data.media) ? data.media : [];
+    return { content: reply, tools, media };
   }
 
   let isBusy = false;
@@ -450,6 +580,7 @@
 
     let reply;
     let toolsUsed = [];
+    let mediaUsed = [];
     let ok = false;
     const thinkingEl = showThinking();
     try {
@@ -457,6 +588,7 @@
         const result = await callBackend(provider, history);
         reply = result.content;
         toolsUsed = Array.isArray(result.tools) ? result.tools : [];
+        mediaUsed = Array.isArray(result.media) ? result.media : [];
       } else {
         await new Promise((r) => setTimeout(r, 350));
         reply = '[mock] ' + text;
@@ -469,7 +601,7 @@
     }
 
     thinkingEl.remove();
-    addMessage('assistant', reply, provider.model, toolsUsed);
+    addMessage('assistant', reply, provider.model, toolsUsed, mediaUsed);
 
     if (!ok) {
       // Re-insert the draft on error so the user's message is never lost.
@@ -607,9 +739,41 @@
   }
 
   // ---------------------------------------------------------------------------
+  // Theme toggle (dark / light, persisted in localStorage)
+  // ---------------------------------------------------------------------------
+
+  const THEME_KEY = 'aiAgent.theme';
+  const themeColorMeta = document.querySelector('meta[name="theme-color"]');
+
+  function applyTheme(theme) {
+    const isLight = theme === 'light';
+    document.documentElement.toggleAttribute('data-theme', isLight);
+    if (themeToggle) {
+      themeToggle.textContent = isLight ? '☀️' : '🌙';
+      themeToggle.title = isLight ? 'Switch to dark theme' : 'Switch to light theme';
+      themeToggle.setAttribute('aria-label', themeToggle.title);
+    }
+    if (themeColorMeta) themeColorMeta.setAttribute('content', isLight ? '#f4f6fa' : '#0a0d12');
+  }
+
+  function initTheme() {
+    let theme = 'dark';
+    try { theme = localStorage.getItem(THEME_KEY) || 'dark'; } catch { /* ignore */ }
+    applyTheme(theme);
+    if (themeToggle) {
+      themeToggle.addEventListener('click', () => {
+        const next = document.documentElement.hasAttribute('data-theme') ? 'dark' : 'light';
+        try { localStorage.setItem(THEME_KEY, next); } catch { /* ignore */ }
+        applyTheme(next);
+      });
+    }
+  }
+
+  // ---------------------------------------------------------------------------
   // Boot
   // ---------------------------------------------------------------------------
 
+  initTheme();
   renderProviderSelect();
   renderMessages();
   input.focus();
