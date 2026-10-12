@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <meta name="theme-color" content="#0b0f14" />
-  <meta name="description" content="AI Agent â€” a personal, installable AI chat PWA (BYOK)." />
+  <meta name="theme-color" content="#0a0d12" />
+  <meta name="description" content="AI Agent — a personal, installable AI chat PWA (BYOK)." />
   <title>AI Agent</title>
 
   <!-- PWA -->
@@ -15,7 +15,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="AI Agent" />
 
-  <link rel="stylesheet" href="style.css?v=4" />
+  <link rel="stylesheet" href="style.css?v=5" />
 </head>
 <body>
   <div class="app">
@@ -23,13 +23,17 @@
     <aside class="sidebar" id="sidebar">
       <div class="sidebar__header">
         <div class="brand">
-          <span class="brand__logo">â—ˆ</span>
+          <span class="brand__logo" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+              <path d="M12 2l2.3 7.7L22 12l-7.7 2.3L12 22l-2.3-7.7L2 12l7.7-2.3L12 2z" />
+            </svg>
+          </span>
           <div>
             <h1>AI Agent</h1>
-            <p class="brand__sub">Personal AI Â· BYOK</p>
+            <p class="brand__sub">Personal AI · BYOK</p>
           </div>
         </div>
-        <button class="icon-btn" id="closeSidebar" aria-label="Close settings" title="Close">âœ•</button>
+        <button class="icon-btn" id="closeSidebar" aria-label="Close settings" title="Close">✕</button>
       </div>
 
       <!-- Provider selector -->
@@ -45,7 +49,7 @@
 
         <!-- Add / edit custom provider (BYOK) -->
         <details class="accordion" id="providerFormWrap">
-          <summary id="providerFormTitle">ï¼‹ Add custom provider (BYOK)</summary>
+          <summary id="providerFormTitle">＋ Add custom provider (BYOK)</summary>
           <form id="providerForm" class="form" autocomplete="off">
             <label class="field">
               <span class="field__label">Provider name</span>
@@ -57,14 +61,14 @@
             </label>
             <label class="field">
               <span class="field__label">API key</span>
-              <input type="password" id="provApiKey" placeholder="sk-â€¦" required />
+              <input type="password" id="provApiKey" placeholder="sk-…" required />
             </label>
             <label class="field">
               <span class="field__label">Model ID</span>
               <input type="text" id="provModel" placeholder="gpt-4o-mini" required />
             </label>
             <p class="hint">
-              ðŸ”’ Your key is stored <strong>only</strong> in this browser's
+              🔒 Your key is stored <strong>only</strong> in this browser's
               <code>localStorage</code> and never hardcoded or logged. Later it can be
               sent to the backend encrypted for multi-device sync.
             </p>
@@ -79,7 +83,7 @@
         <h2 class="panel__title">MCP servers</h2>
         <div class="mcp-status" id="mcpStatus">
           <span class="dot dot--offline" id="mcpDot"></span>
-          <span id="mcpStatusText">Connectingâ€¦</span>
+          <span id="mcpStatusText">Connecting…</span>
         </div>
         <ul class="mcp-tools" id="mcpTools"></ul>
         <p class="hint" id="mcpNote">
@@ -96,10 +100,10 @@
     <!-- ===================== Main chat ===================== -->
     <main class="chat">
       <header class="chat__header">
-        <button class="icon-btn" id="openSidebar" aria-label="Open settings">â˜°</button>
+        <button class="icon-btn" id="openSidebar" aria-label="Open settings">☰</button>
         <div class="chat__title">
           <span id="activeModel">Local (mock)</span>
-          <span class="chat__status" id="chatStatus">offline Â· mock mode</span>
+          <span class="chat__status" id="chatStatus">offline · mock mode</span>
         </div>
       </header>
 
@@ -109,13 +113,13 @@
         <textarea
           id="input"
           rows="1"
-          placeholder="Message AI Agentâ€¦ (Enter to send, Shift+Enter for newline)"
+          placeholder="Message AI Agent… (Enter to send, Shift+Enter for newline)"
         ></textarea>
         <button type="submit" class="btn btn--primary composer__send" aria-label="Send">Send</button>
       </form>
     </main>
   </div>
 
-  <script src="app.js?v=4"></script>
+  <script src="app.js?v=6"></script>
 </body>
 </html>

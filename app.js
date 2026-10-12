@@ -169,6 +169,13 @@
       ? 'offline · mock mode'
       : `${p.model} · BYOK ready`;
     removeProvider.hidden = !!p.builtin;
+    updateComposerPlaceholder(p);
+  }
+
+  // Keep the active provider/model visible right where the user types.
+  function updateComposerPlaceholder(p) {
+    const label = p.builtin ? p.name : `${p.name} · ${p.model}`;
+    input.placeholder = 'Message ' + label + '… (Enter to send, Shift+Enter for newline)';
   }
 
   function fillForm(p) {
@@ -274,11 +281,44 @@
     meta.textContent = m.role === 'user' ? 'You' : 'AI Agent' + (m.model ? ' · ' + m.model : '');
     wrap.appendChild(bubble);
     wrap.appendChild(meta);
+    if (Array.isArray(m.tools) && m.tools.length) {
+      wrap.appendChild(renderToolChips(m.tools));
+    }
     return wrap;
   }
 
-  function addMessage(role, content, model) {
-    messages.push({ role, content, model });
+  // Subtle tool-chip row rendered under an assistant message when the backend
+  // reports tools were invoked (data.tools_used). Inline styles only so we don't
+  // depend on new CSS in style.css.
+  function renderToolChips(tools) {
+    const row = document.createElement('div');
+    row.className = 'msg__tools';
+    row.style.cssText =
+      'display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;align-items:center;';
+
+    const icon = document.createElement('span');
+    icon.textContent = '🔧';
+    icon.title = 'Tools used';
+    icon.style.cssText = 'font-size:12px;line-height:20px;color:#8b98a9;';
+    row.appendChild(icon);
+
+    tools.forEach((tool) => {
+      const chip = document.createElement('span');
+      chip.className = 'msg__tool';
+      chip.textContent = tool;
+      chip.style.cssText =
+        'font-size:11px;line-height:20px;padding:0 8px;border-radius:999px;' +
+        'background:#1f3a5f;color:#7aa5ff;border:1px solid #263140;';
+      row.appendChild(chip);
+    });
+
+    return row;
+  }
+
+  function addMessage(role, content, model, tools) {
+    const msg = { role, content, model };
+    if (Array.isArray(tools) && tools.length) msg.tools = tools;
+    messages.push(msg);
     messagesEl.appendChild(renderMessage(messages[messages.length - 1]));
     messagesEl.scrollTop = messagesEl.scrollHeight;
     saveMessages(messages);
@@ -300,57 +340,148 @@
     return wrap;
   }
 
-  async function callBackend(provider, msgs) {
-    const res = await fetch(BACKEND_CHAT_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        provider: {
-          baseUrl: provider.baseUrl,
-          apiKey: provider.apiKey,
-          model: provider.model,
-        },
-        messages: msgs.map(({ role, content }) => ({ role, content })),
-      }),
-    });
-    if (!res.ok) {
-      let msg = 'HTTP ' + res.status;
-      try { msg = (await res.json()).error || msg; } catch { /* ignore */ }
-      throw new Error(msg);
-    }
-    const data = await res.json();
-    return data.reply?.content || '(no content)';
+  function errWithKind(kind, message) {
+    const e = new Error(typeof message === 'string' ? message : 'Unknown error');
+    e.kind = kind;
+    return e;
   }
 
+  // Map an HTTP status + backend error text to a friendly error "kind".
+  function classifyError(status, detail) {
+    const d = String(detail || '').toLowerCase();
+    if (status === 401 || status === 403) return 'auth';
+    if (/api\s?key|credential|unauthor|authentication|\bauth\b/.test(d)) return 'auth';
+    if (/\bmodel\b/.test(d)) return 'model';
+    if (status >= 500) return 'backend';
+    if (status >= 400) return 'provider';
+    return 'unknown';
+  }
+
+  // Turn a thrown error into a short, friendly prefixed message + raw detail line.
+  function formatError(err) {
+    const prefixes = {
+      network: '🔌 Backend unreachable',
+      auth: '🔑 Invalid API key',
+      model: '🤖 Invalid model',
+      provider: '🤖 Provider error',
+      backend: '🔌 Backend error',
+      unknown: '⚠️ Error',
+    };
+    const kind = (err && err.kind) || 'unknown';
+    const detail = (err && err.message) ? err.message : String(err);
+    const prefix = prefixes[kind] || prefixes.unknown;
+    return detail ? prefix + '\n' + detail : prefix;
+  }
+
+  async function callBackend(provider, msgs) {
+    let res;
+    try {
+      res = await fetch(BACKEND_CHAT_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          provider: {
+            baseUrl: provider.baseUrl,
+            apiKey: provider.apiKey,
+            model: provider.model,
+          },
+          messages: msgs.map(({ role, content }) => ({ role, content })),
+        }),
+      });
+    } catch (err) {
+      // Fetch threw (DNS / connection refused / blocked) → backend unreachable.
+      throw errWithKind('network', (err && err.message) ? err.message : 'Failed to fetch');
+    }
+
+    let data = null;
+    try { data = await res.json(); } catch { data = null; }
+
+    if (!res.ok) {
+      const detail = (data && (data.error || data.message)) || ('HTTP ' + res.status);
+      throw errWithKind(classifyError(res.status, detail), String(detail));
+    }
+
+    const reply = (data && data.reply && data.reply.content) || '(no content)';
+    const tools = data && Array.isArray(data.tools_used) ? data.tools_used : [];
+    return { content: reply, tools };
+  }
+
+  let isBusy = false;
+
   async function handleSend() {
+    if (isBusy) return; // ignore rapid/duplicate sends while a request is in flight
+
     const text = input.value.trim();
     if (!text) return;
 
     const provider = getActiveProvider();
+
+    // Backend mode + "Local (mock)" selected → ask for a provider instead of
+    // surfacing a confusing upstream error.
+    if (USE_BACKEND && provider.builtin) {
+      addMessage(
+        'assistant',
+        '🔑 Add a provider first — open Settings and add a BYOK provider to chat with a real model.',
+        provider.model
+      );
+      input.focus();
+      return;
+    }
+
     addMessage('user', text, provider.model);
     input.value = '';
     input.style.height = 'auto';
+
+    // Build the outgoing history, dropping any empty/blank messages so the
+    // backend never receives an empty (or only-whitespace) messages array.
+    const history = messages
+      .filter((m) => m && (m.role === 'user' || m.role === 'assistant') &&
+        typeof m.content === 'string' && m.content.trim())
+      .map(({ role, content }) => ({ role, content }));
+
+    if (!history.length) {
+      // Defensive: nothing meaningful to send — restore the draft and bail.
+      input.value = text;
+      input.focus();
+      return;
+    }
+
     setComposerBusy(true);
 
     let reply;
+    let toolsUsed = [];
+    let ok = false;
     const thinkingEl = showThinking();
     try {
       if (USE_BACKEND) {
-        reply = await callBackend(provider, messages);
+        const result = await callBackend(provider, history);
+        reply = result.content;
+        toolsUsed = Array.isArray(result.tools) ? result.tools : [];
       } else {
         await new Promise((r) => setTimeout(r, 350));
         reply = '[mock] ' + text;
       }
+      ok = true;
     } catch (err) {
-      reply = '⚠️ Error: ' + (err && err.message ? err.message : err);
+      reply = formatError(err);
     } finally {
       setComposerBusy(false);
     }
+
     thinkingEl.remove();
-    addMessage('assistant', reply, provider.model);
+    addMessage('assistant', reply, provider.model, toolsUsed);
+
+    if (!ok) {
+      // Re-insert the draft on error so the user's message is never lost.
+      input.value = text;
+      input.style.height = 'auto';
+      input.style.height = Math.min(input.scrollHeight, 160) + 'px';
+    }
+    input.focus();
   }
 
   function setComposerBusy(busy) {
+    isBusy = busy;
     const btn = composer.querySelector('button[type=submit]');
     btn.disabled = busy;
     btn.textContent = busy ? '…' : 'Send';
@@ -373,11 +504,28 @@
     input.style.height = Math.min(input.scrollHeight, 160) + 'px';
   });
 
+  // Transient confirmation toast (inline styles only — no new CSS required).
+  function toast(message) {
+    const el = document.createElement('div');
+    el.textContent = message;
+    el.style.cssText =
+      'position:fixed;left:50%;bottom:90px;transform:translateX(-50%);' +
+      'background:rgba(31,58,95,0.95);color:#e6edf3;padding:8px 14px;' +
+      'border-radius:8px;font-size:13px;z-index:1000;pointer-events:none;' +
+      'box-shadow:0 8px 30px rgba(0,0,0,0.35);transition:opacity 0.3s ease;';
+    document.body.appendChild(el);
+    setTimeout(() => {
+      el.style.opacity = '0';
+      setTimeout(() => el.remove(), 350);
+    }, 1400);
+  }
+
   clearChat.addEventListener('click', (e) => {
     e.preventDefault();
     messages = [];
     saveMessages(messages);
     renderMessages();
+    toast('Chat cleared');
   });
 
   // ---------------------------------------------------------------------------
