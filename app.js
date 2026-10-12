@@ -336,7 +336,7 @@
     const thinkingEl = showThinking();
     try {
       if (USE_BACKEND) {
-        reply = await callBackend(provider, messages.slice(0, -1));
+        reply = await callBackend(provider, messages);
       } else {
         await new Promise((r) => setTimeout(r, 350));
         reply = '[mock] ' + text;
