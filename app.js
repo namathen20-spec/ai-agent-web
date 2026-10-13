@@ -46,6 +46,13 @@
   // Persistence helpers
   // ---------------------------------------------------------------------------
 
+  // Shared-secret web key for the backend's sensitive endpoints. The worker is
+  // permissive when `AGENT_WEB_KEY` is unset, so sending an empty string when the
+  // key isn't configured is forward-compatible and causes no regression.
+  function agentWebKey() {
+    try { return localStorage.getItem('agentWebKey') || ''; } catch { return ''; }
+  }
+
   function loadProviders() {
     try {
       const raw = localStorage.getItem(STORAGE_KEYS.providers);
@@ -314,6 +321,10 @@
   const URL_SCAN_RE = /https?:\/\/[^\s"'<>]+/gi;
   const MEDIA_EXT_RE = /\.(?:jpe?g|png|gif|webp|mp4|mov|webm|m4v)(?:[?#]|$)/i;
   const TELEGRAM_FILE_RE = /telegram\.org\/file\/bot/i;
+  // Relay media links (gokul-agent-server.onrender.com/media/<id>) have no file
+  // extension, so they're missed by MEDIA_EXT_RE. The generic /media/<id> form
+  // covers both the relay host and any equivalent path.
+  const RELAY_MEDIA_RE = /(?:gokul-agent-server\.onrender\.com)?\/media\/[A-Za-z0-9_-]+/i;
 
   function escapeHtml(s) {
     return String(s)
@@ -345,7 +356,7 @@
   }
 
   function isMediaUrl(url) {
-    return MEDIA_EXT_RE.test(url) || TELEGRAM_FILE_RE.test(url);
+    return MEDIA_EXT_RE.test(url) || TELEGRAM_FILE_RE.test(url) || RELAY_MEDIA_RE.test(url);
   }
 
   function mediaTypeFromUrl(url) {
@@ -655,7 +666,7 @@
     try {
       res = await fetch(BACKEND_CHAT_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-Web-Key': agentWebKey() },
         body: JSON.stringify({
           provider: {
             baseUrl: provider.baseUrl,
@@ -974,7 +985,7 @@
 
   async function refreshMcpStatus() {
     try {
-      const res = await fetch(BACKEND_DEVICES_URL);
+      const res = await fetch(BACKEND_DEVICES_URL, { headers: { 'X-Web-Key': agentWebKey() } });
       if (!res.ok) throw new Error('HTTP ' + res.status);
       const data = await res.json();
       const devices = Array.isArray(data.devices) ? data.devices : [];
