@@ -631,6 +631,7 @@
   function formatError(err) {
     const prefixes = {
       network: '🔌 Backend unreachable',
+      timeout: '⏳ Request timed out',
       auth: '🔑 Invalid API key',
       model: '🤖 Invalid model',
       provider: '🤖 Provider error',
@@ -643,8 +644,14 @@
     return detail ? prefix + '\n' + detail : prefix;
   }
 
+  // Abort a stuck chat request (e.g. an extra-long backend tool loop) after 3
+  // minutes so the UI never hangs indefinitely.
+  const CHAT_TIMEOUT_MS = 180000;
+
   async function callBackend(provider, msgs) {
     let res;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), CHAT_TIMEOUT_MS);
     try {
       res = await fetch(BACKEND_CHAT_URL, {
         method: 'POST',
@@ -658,10 +665,21 @@
           messages: msgs.map(({ role, content }) => ({ role, content })),
           ...(selectedDeviceId ? { device_id: selectedDeviceId } : {}),
         }),
+        signal: controller.signal,
       });
     } catch (err) {
+      // Fetch was aborted by our timeout (long-running tool loop) → friendly
+      // timeout error, not a generic network failure.
+      if (err && err.name === 'AbortError') {
+        throw errWithKind(
+          'timeout',
+          'The request took longer than 3 minutes — the tool loop may still be running. Please try again.'
+        );
+      }
       // Fetch threw (DNS / connection refused / blocked) → backend unreachable.
       throw errWithKind('network', (err && err.message) ? err.message : 'Failed to fetch');
+    } finally {
+      clearTimeout(timeoutId);
     }
 
     let data = null;
