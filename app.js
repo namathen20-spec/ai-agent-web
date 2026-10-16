@@ -1799,10 +1799,12 @@
 
   refreshMcpStatus();
   renderMcpTools();
-  // Poll device status every 15s so the dot stays fresh.
-  setInterval(refreshMcpStatus, 15000);
+  // Poll device status every 2 min (was 15s — was flooding the free relay).
+  setInterval(refreshMcpStatus, 120000);
 
-  // Status bar reads (battery/storage/network) — initial + every 30s.
+  // Status bar reads (battery/storage/network) — initial + every 5 min.
+  // (Was 30s: 3 commands per poll was flooding the relay with a huge backlog,
+  //  which starved media commands like camera/audio and caused timeouts.)
   refreshStatusBar();
-  setInterval(refreshStatusBar, 30000);
+  setInterval(refreshStatusBar, 300000);
 })();
