@@ -1894,11 +1894,13 @@
       const head = el('div', 'device-card__head');
       head.appendChild(el('span', 'dot ' + (d.online ? 'dot--online' : 'dot--offline')));
       head.appendChild(el('span', 'device-card__name', d.name || d.model || id || '?'));
-      const status = el('div', 'device-card__status', 'Loading status…');
+      const status = el('div', 'device-card__status', d.online ? 'Loading status…' : '⚪ Offline');
       card.appendChild(head);
       card.appendChild(status);
       box.appendChild(card);
-      loadDeviceStatus(id, status); // one fetch per card, on this view open only
+      // Only fetch status for ONLINE devices — an offline device never returns,
+      // which parks commands in the relay queue and starves other commands.
+      if (d.online) loadDeviceStatus(id, status);
     });
   }
 
@@ -2188,7 +2190,9 @@
       drawScreenTexture(state, name || '—', battery ? summarizeBattery(battery) : '—');
     };
     refresh();
-    state.timer = setInterval(refresh, 5000);
+    // 15s (not 5s) — a 5s battery+deviceinfo poll floods the free relay while
+    // this view is open and adds to the command backlog.
+    state.timer = setInterval(refresh, 15000);
   }
 
   function drawScreenTexture(state, name, batt) {
