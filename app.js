@@ -13,6 +13,8 @@
     providers: 'aiAgent.providers',
     activeId: 'aiAgent.activeProviderId',
     messages: 'aiAgent.messages',
+    history: 'aiAgent.history',
+    gallery: 'aiAgent.gallery',
   };
 
   const USE_BACKEND = true;
@@ -303,6 +305,89 @@
 
   function saveMessages(messages) {
     localStorage.setItem(STORAGE_KEYS.messages, JSON.stringify(messages));
+  }
+
+  // --------------------------------------------------------------------------
+  // Feature #8 — command history (persisted, capped ~100 entries).
+  // --------------------------------------------------------------------------
+  let commandHistory = loadHistory();
+
+  function loadHistory() {
+    try {
+      const arr = JSON.parse(localStorage.getItem(STORAGE_KEYS.history));
+      return Array.isArray(arr) ? arr.slice(0, 100) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  function saveHistory() {
+    try {
+      localStorage.setItem(STORAGE_KEYS.history, JSON.stringify(commandHistory.slice(0, 100)));
+    } catch { /* ignore */ }
+  }
+
+  function toolFromCommand(command) {
+    return String(command || '').trim().split(/\s+/)[0] || 'cmd';
+  }
+
+  function pushHistory(tool, command, resultText) {
+    commandHistory.unshift({
+      ts: Date.now(),
+      tool: tool || toolFromCommand(command),
+      command: String(command || ''),
+      result_snippet: String(resultText || '').slice(0, 160),
+    });
+    if (commandHistory.length > 100) commandHistory.length = 100;
+    saveHistory();
+  }
+
+  function clearHistory() {
+    commandHistory = [];
+    saveHistory();
+  }
+
+  // --------------------------------------------------------------------------
+  // Feature #2 — media gallery (persisted, capped ~60 items; URLs only).
+  // --------------------------------------------------------------------------
+  let mediaGallery = loadGallery();
+
+  function loadGallery() {
+    try {
+      const arr = JSON.parse(localStorage.getItem(STORAGE_KEYS.gallery));
+      return Array.isArray(arr) ? arr.slice(0, 60) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  // Persist gallery but NEVER store base64 / data URIs (only http(s) URLs).
+  function saveGallery() {
+    try {
+      const persist = mediaGallery
+        .filter((g) => g && typeof g.url === 'string' && !/^data:/i.test(g.url))
+        .slice(0, 60);
+      localStorage.setItem(STORAGE_KEYS.gallery, JSON.stringify(persist));
+    } catch { /* ignore */ }
+  }
+
+  function addToGallery(type, url) {
+    if (!url || typeof url !== 'string') return;
+    const clean = url.trim();
+    if (!clean) return;
+    mediaGallery.unshift({ ts: Date.now(), type: type || 'image', url: clean });
+    if (mediaGallery.length > 60) mediaGallery.length = 60;
+    saveGallery();
+  }
+
+  // Infer a render `kind` from a raw command string (used for History "Rerun").
+  function kindForCommand(command) {
+    const c = String(command || '').toLowerCase();
+    if (c.indexOf('screen_record') === 0) return 'video';
+    if (c.indexOf('record_audio') === 0) return 'audio';
+    if (c.indexOf('camera_link') === 0 || c.indexOf('screenshot_link') === 0) return 'image';
+    if (c.indexOf('live ') === 0 || c.indexOf('location') === 0) return 'link';
+    return 'auto';
   }
 
   function getActiveProvider() {
@@ -1224,10 +1309,7 @@
 
   async function refreshMcpStatus() {
     try {
-      const res = await fetch(BACKEND_DEVICES_URL, { headers: { 'X-Web-Key': agentWebKey() } });
-      if (!res.ok) throw new Error('HTTP ' + res.status);
-      const data = await res.json();
-      const devices = Array.isArray(data.devices) ? data.devices : [];
+      const devices = await fetchDevices();
       populateDeviceSelect(devices);
       const online = devices.filter((d) => d.online);
       if (online.length) {
@@ -1342,35 +1424,50 @@
 
   let ccBusy = false;
 
-  async function postCommand(command) {
-    const res = await fetch(BACKEND_COMMAND_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Web-Key': agentWebKey() },
-      body: JSON.stringify({
-        command: command,
-        ...(selectedDeviceId ? { device_id: selectedDeviceId } : {}),
-      }),
-    });
+  // `deviceId` is an optional per-call override for multi-device control; when
+  // omitted it falls back to `selectedDeviceId` (the header device selector).
+  // `opts.log === false` suppresses command-history logging (used by background
+  // status polling so it doesn't flood the history).
+  async function postCommand(command, deviceId, opts) {
+    const targetDevice = deviceId || selectedDeviceId;
+    const log = !opts || opts.log !== false;
     let data = null;
-    try { data = await res.json(); } catch (e) { /* ignore */ }
-    if (!res.ok) {
-      const detail = (data && (data.error || data.message || data.result)) || ('HTTP ' + res.status);
-      throw new Error(detail);
+    let errorDetail = '';
+    try {
+      const res = await fetch(BACKEND_COMMAND_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Web-Key': agentWebKey() },
+        body: JSON.stringify({
+          command: command,
+          ...(targetDevice ? { device_id: targetDevice } : {}),
+        }),
+      });
+      try { data = await res.json(); } catch (e) { /* ignore */ }
+      if (!res.ok) {
+        errorDetail = (data && (data.error || data.message || data.result)) || ('HTTP ' + res.status);
+        throw new Error(errorDetail);
+      }
+      return data;
+    } finally {
+      if (log) {
+        const snippet = errorDetail || (data && typeof data.result !== 'undefined' ? data.result : '');
+        pushHistory(toolFromCommand(command), command, snippet);
+      }
     }
-    return data;
   }
 
   // Non-throwing variant used by the status bar / aggregates.
-  async function safeCommand(command) {
+  async function safeCommand(command, deviceId, opts) {
     try {
-      const data = await postCommand(command);
+      const data = await postCommand(command, deviceId, opts);
       return (data && typeof data.result !== 'undefined') ? String(data.result) : '';
     } catch (err) {
       return null;
     }
   }
 
-  function renderMedia(resultEl, url, kind) {
+  function renderMedia(resultEl, url, kind, opts) {
+    if (!(opts && opts.noGallery)) addToGallery(kind === 'video' ? 'video' : 'image', url);
     const box = el('div', 'result-media');
     if (kind === 'video') {
       const v = el('video');
@@ -1405,6 +1502,7 @@
     if (AUDIO_B64_RE.test(text)) {
       const b64 = text.replace(AUDIO_B64_RE, '').replace(/\s+/g, '');
       const dataUri = 'data:audio/wav;base64,' + b64;
+      addToGallery('audio', dataUri);
       const box = el('div', 'result-media');
       const audio = el('audio');
       audio.controls = true;
@@ -1452,20 +1550,21 @@
     }
   }
 
-  async function runCommand(command, kind) {
+  async function runCommand(command, kind, targetEl) {
     if (ccBusy) return;
     ccBusy = true;
-    toolResultEl.innerHTML = '';
+    const out = targetEl || toolResultEl;
+    out.innerHTML = '';
     const loader = el('div', 'result-loading');
     loader.textContent = 'Running: ' + command;
-    toolResultEl.appendChild(loader);
+    out.appendChild(loader);
     try {
       const data = await postCommand(command);
       const raw = (data && typeof data.result !== 'undefined') ? data.result : '';
-      renderToolResult(toolResultEl, raw, kind || 'auto');
+      renderToolResult(out, raw, kind || 'auto');
     } catch (err) {
-      toolResultEl.innerHTML = '';
-      toolResultEl.appendChild(
+      out.innerHTML = '';
+      out.appendChild(
         el('pre', 'result-pre result-error', '⚠️ ' + (err && err.message ? err.message : 'Request failed'))
       );
     } finally {
@@ -1497,6 +1596,8 @@
   // Control Center — tile rendering + open/close + tilt + particles + status bar
   // ---------------------------------------------------------------------------
 
+  let specialOnClose = null;
+
   function openTool(tool) {
     gridView.hidden = true;
     toolView.hidden = false;
@@ -1506,6 +1607,7 @@
     toolView.style.animation = '';
     toolTitle.textContent = tool.emoji + ' ' + tool.label;
     toolControlsEl.innerHTML = '';
+    toolControlsEl.style.display = '';
     toolResultEl.innerHTML = '';
     tool.build({
       controls: toolControlsEl,
@@ -1517,8 +1619,13 @@
   }
 
   function closeTool() {
+    if (specialOnClose) {
+      try { specialOnClose(); } catch (err) { console.warn('view close error:', err); }
+      specialOnClose = null;
+    }
     toolView.hidden = true;
     gridView.hidden = false;
+    toolControlsEl.style.display = '';
     gridView.style.animation = 'none';
     void gridView.offsetWidth;
     gridView.style.animation = '';
@@ -1542,18 +1649,28 @@
     });
   }
 
+  function buildTile(spec, onOpen) {
+    const tile = el('button', 'tile');
+    tile.type = 'button';
+    tile.style.setProperty('--tile-accent', spec.color || '#4f8cff');
+    tile.appendChild(el('span', 'tile__emoji', spec.emoji));
+    tile.appendChild(el('span', 'tile__label', spec.label));
+    tile.appendChild(el('span', 'tile__sub', spec.sub));
+    tile.addEventListener('click', () => onOpen(spec));
+    attachTilt(tile);
+    return tile;
+  }
+
   function renderGrid() {
     tileGrid.innerHTML = '';
     TOOLS.forEach((tool, i) => {
-      const tile = el('button', 'tile');
-      tile.type = 'button';
-      tile.style.setProperty('--tile-accent', tool.color);
+      const tile = buildTile(tool, openTool);
       tile.style.animationDelay = (i * 30) + 'ms';
-      tile.appendChild(el('span', 'tile__emoji', tool.emoji));
-      tile.appendChild(el('span', 'tile__label', tool.label));
-      tile.appendChild(el('span', 'tile__sub', tool.sub));
-      tile.addEventListener('click', () => openTool(tool));
-      attachTilt(tile);
+      tileGrid.appendChild(tile);
+    });
+    SPECIALS.forEach((spec, i) => {
+      const tile = buildTile(spec, (s) => enterView(s.emoji + ' ' + s.label, s.onClose, s.build));
+      tile.style.animationDelay = ((TOOLS.length + i) * 30) + 'ms';
       tileGrid.appendChild(tile);
     });
   }
@@ -1613,14 +1730,537 @@
     const sEl = document.getElementById('statusStorage');
     const nEl = document.getElementById('statusNetwork');
     const [battery, storage, network] = await Promise.all([
-      safeCommand('battery'),
-      safeCommand('storage'),
-      safeCommand('network'),
+      safeCommand('battery', undefined, { log: false }),
+      safeCommand('storage', undefined, { log: false }),
+      safeCommand('network', undefined, { log: false }),
     ]);
     if (bEl) bEl.textContent = battery ? ('🔋 ' + summarizeBattery(battery)) : '🔋 —';
     if (sEl) sEl.textContent = storage ? ('💾 ' + compact(storage, 26)) : '💾 —';
     if (nEl) nEl.textContent = network ? ('📶 ' + compact(network, 22)) : '📶 —';
   }
+
+  // ---------------------------------------------------------------------------
+  // Feature #5 — multi-device dashboard (fetch shared by MCP status + Devices).
+  // ---------------------------------------------------------------------------
+  async function fetchDevices() {
+    const res = await fetch(BACKEND_DEVICES_URL, { headers: { 'X-Web-Key': agentWebKey() } });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    return Array.isArray(data.devices) ? data.devices : [];
+  }
+
+  // ---------------------------------------------------------------------------
+  // Feature views — a generic "special tile" entry point on top of the existing
+  // tool-view shell (gridView ↔ toolView). `onClose` tears down leaky resources.
+  // ---------------------------------------------------------------------------
+  function enterView(title, onClose, build) {
+    gridView.hidden = true;
+    toolView.hidden = false;
+    toolView.style.animation = 'none';
+    void toolView.offsetWidth;
+    toolView.style.animation = '';
+    toolTitle.textContent = title;
+    toolControlsEl.innerHTML = '';
+    toolControlsEl.style.display = 'none'; // special views render into the result area
+    toolResultEl.innerHTML = '';
+    specialOnClose = onClose || null;
+    if (build) {
+      build({
+        controls: toolControlsEl,
+        result: toolResultEl,
+        run: (command, kind) => runCommand(command, kind),
+        runMulti: (list) => runMulti(list),
+      });
+    }
+    if (ccMain) ccMain.scrollTop = 0;
+  }
+
+  // ---- History view (#8) ----------------------------------------------------
+  function openHistory(scope) {
+    if (!commandHistory.length) {
+      scope.result.appendChild(el('div', 'hint', 'No commands yet — run any tool and it will show up here.'));
+      return;
+    }
+    const box = el('div', 'history');
+    box.appendChild(el('div', 'history__count', commandHistory.length + ' recent commands · stored in this browser'));
+    const list = el('div', 'history__list');
+    commandHistory.forEach((h) => list.appendChild(historyRow(h)));
+    box.appendChild(list);
+    // "Clear" affordance.
+    const clear = makeButton('🗑 Clear history', () => {
+      clearHistory();
+      enterView('🕘 History', null, openHistory);
+    }, 'tc-btn');
+    box.appendChild(clear);
+    scope.result.appendChild(box);
+  }
+
+  function historyRow(h) {
+    const row = el('div', 'history__row');
+    const top = el('div', 'history__top');
+    top.appendChild(el('span', 'history__time', new Date(h.ts).toLocaleTimeString()));
+    top.appendChild(el('span', 'history__tool', h.tool || 'cmd'));
+    row.appendChild(top);
+    row.appendChild(el('code', 'history__cmd', h.command));
+    row.appendChild(el('div', 'history__preview', h.result_snippet || '(no result)'));
+    row.appendChild(makeButton('🔄 Rerun', () => rerunHistory(h, row), 'tc-btn history__rerun'));
+    return row;
+  }
+
+  function rerunHistory(h, row) {
+    let out = row.querySelector('.history__result');
+    if (!out) {
+      out = el('div', 'history__result');
+      row.appendChild(out);
+    }
+    runCommand(h.command, kindForCommand(h.command), out);
+  }
+
+  // ---- Gallery view (#2) ----------------------------------------------------
+  function openGallery(scope) {
+    if (!mediaGallery.length) {
+      scope.result.appendChild(el('div', 'hint', 'No media yet — camera, screenshot, screen record, or audio will appear here.'));
+      return;
+    }
+    const box = el('div', 'gallery');
+    const grid = el('div', 'gallery__grid');
+    mediaGallery.forEach((g) => grid.appendChild(galleryItem(g)));
+    box.appendChild(grid);
+    scope.result.appendChild(box);
+  }
+
+  function galleryItem(g) {
+    const card = el('div', 'gallery__item');
+    if (g.type === 'video') {
+      const v = el('video');
+      v.controls = true;
+      v.preload = 'metadata';
+      v.playsInline = true;
+      v.src = g.url;
+      card.appendChild(v);
+    } else if (g.type === 'audio') {
+      const row = el('div', 'gallery__audio');
+      row.appendChild(el('span', 'gallery__audio-icon', '🎵'));
+      const a = el('audio');
+      a.controls = true;
+      a.src = g.url;
+      row.appendChild(a);
+      card.appendChild(row);
+    } else {
+      const img = el('img');
+      img.loading = 'lazy';
+      img.alt = 'Media';
+      renderImageViaBlob(img, g.url);
+      card.appendChild(img);
+      card.classList.add('gallery__item--img');
+      card.title = 'Open full size';
+      card.addEventListener('click', () => openImageInResult(g.url));
+    }
+    return card;
+  }
+
+  function openImageInResult(url) {
+    toolResultEl.innerHTML = '';
+    renderMedia(toolResultEl, url, 'image', { noGallery: true });
+    if (ccMain) ccMain.scrollTop = 0;
+  }
+
+  // ---- Devices view (#5) ----------------------------------------------------
+  function openDevices(scope) {
+    const box = el('div', 'devices');
+    scope.result.appendChild(box);
+    renderDevices(box);
+  }
+
+  async function renderDevices(box) {
+    box.innerHTML = '';
+    box.appendChild(el('div', 'result-loading', 'Loading devices…'));
+    let devices;
+    try {
+      devices = await fetchDevices();
+    } catch (err) {
+      box.innerHTML = '';
+      box.appendChild(el('div', 'hint', '🔌 Backend unreachable — could not load devices.'));
+      return;
+    }
+    box.innerHTML = '';
+    if (!devices.length) {
+      box.appendChild(el('div', 'hint', 'No phones registered yet.'));
+      return;
+    }
+    devices.forEach((d) => {
+      const id = d.device_id || d.id || '';
+      const card = el('div', 'device-card');
+      const head = el('div', 'device-card__head');
+      head.appendChild(el('span', 'dot ' + (d.online ? 'dot--online' : 'dot--offline')));
+      head.appendChild(el('span', 'device-card__name', d.name || d.model || id || '?'));
+      const status = el('div', 'device-card__status', 'Loading status…');
+      card.appendChild(head);
+      card.appendChild(status);
+      box.appendChild(card);
+      loadDeviceStatus(id, status); // one fetch per card, on this view open only
+    });
+  }
+
+  async function loadDeviceStatus(id, statusEl) {
+    if (!id) { statusEl.textContent = '—'; return; }
+    let battery = null, storage = null, network = null;
+    try {
+      [battery, storage, network] = await Promise.all([
+        safeCommand('battery', id, { log: false }),
+        safeCommand('storage', id, { log: false }),
+        safeCommand('network', id, { log: false }),
+      ]);
+    } catch (err) { /* ignore */ }
+    statusEl.innerHTML = '';
+    statusEl.appendChild(el('span', 'device-card__stat', '🔋 ' + (battery ? summarizeBattery(battery) : '—')));
+    statusEl.appendChild(el('span', 'device-card__stat', '💾 ' + (storage ? compact(storage, 18) : '—')));
+    statusEl.appendChild(el('span', 'device-card__stat', '📶 ' + (network ? compact(network, 16) : '—')));
+  }
+
+  // ---- Sound + micro-animations support (#10) --------------------------------
+  // Very short "tap" blip via the Web Audio API. No assets. Lazily initialized
+  // on the first user gesture; fully skipped for reduced-motion / no audio.
+  let audioCtx = null;
+  let audioUnavailable = false;
+
+  function ensureAudio() {
+    if (prefersReducedMotion() || audioUnavailable) return null;
+    if (!audioCtx) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) { audioUnavailable = true; return null; }
+      try { audioCtx = new AC(); } catch (err) { audioUnavailable = true; return null; }
+    }
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    return audioCtx;
+  }
+
+  function playTap() {
+    const ctx = ensureAudio();
+    if (!ctx) return;
+    const t = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(760, t);
+    osc.frequency.exponentialRampToValueAtTime(430, t + 0.06);
+    gain.gain.setValueAtTime(0.0001, t);
+    gain.gain.exponentialRampToValueAtTime(0.05, t + 0.006);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.09);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(t);
+    osc.stop(t + 0.1);
+  }
+
+  function initSound() {
+    if (prefersReducedMotion()) return;
+    document.addEventListener('click', (e) => {
+      const t = e.target && e.target.closest ? e.target.closest('button, .tile, summary, a.result-dl, a.result-maps, .msg__media-dl') : null;
+      if (!t || t.disabled) return;
+      playTap();
+    }, true);
+  }
+
+  // ---- Phone 3D view (#9, Three.js loaded lazily) ----------------------------
+  let threePromise = null;
+
+  function loadThree() {
+    if (window.THREE) return Promise.resolve(window.THREE);
+    if (threePromise) return threePromise;
+    threePromise = new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js';
+      s.async = true;
+      s.onload = () => resolve(window.THREE);
+      s.onerror = () => { threePromise = null; reject(new Error('Three.js failed to load')); };
+      document.head.appendChild(s);
+    });
+    return threePromise;
+  }
+
+  let phone3dSerial = 0;
+  let phone3d = null; // active scene state (null when the view is closed)
+
+  function setP3dError(statusEl, msg) {
+    if (!statusEl) return;
+    statusEl.textContent = msg;
+    statusEl.classList.add('p3d__status--error');
+  }
+
+  function openPhone3d(scope) {
+    const wrap = el('div', 'p3d');
+    const status = el('div', 'p3d__status', 'Loading 3D…');
+    const canvas = el('canvas', 'p3d__canvas');
+    wrap.appendChild(canvas);
+    wrap.appendChild(status);
+    scope.result.appendChild(wrap);
+    startPhone3d(wrap, canvas, status);
+  }
+
+  function startPhone3d(container, canvas, statusEl) {
+    const myId = ++phone3dSerial;
+
+    let webgl = false;
+    try {
+      const t = document.createElement('canvas');
+      webgl = !!(window.WebGLRenderingContext && (t.getContext('webgl') || t.getContext('experimental-webgl')));
+    } catch (err) { webgl = false; }
+    if (!webgl) { setP3dError(statusEl, '3D not supported'); return; }
+
+    loadThree().then((THREE) => {
+      if (phone3dSerial !== myId) return; // view was closed/reopened before load finished
+      try {
+        initPhone3d(THREE, container, canvas, statusEl);
+      } catch (err) {
+        setP3dError(statusEl, '3D not supported');
+      }
+    }).catch(() => {
+      if (phone3dSerial === myId) setP3dError(statusEl, '3D not supported (could not load Three.js)');
+    });
+  }
+
+  function initPhone3d(THREE, container, canvas, statusEl) {
+    const state = {
+      container, canvas, statusEl,
+      renderer: null, scene: null, camera: null, phone: null, screenPlane: null,
+      screenCanvas: null, screenCtx: null, screenTex: null,
+      baseRotY: 0, dragRotY: 0, dragRotX: 0, hoverTiltY: 0, hoverTiltX: 0,
+      dragging: false, lastX: 0, lastY: 0,
+      raf: 0, timer: 0, w: 0, h: 0, handlers: null,
+    };
+    phone3d = state;
+
+    const renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true, alpha: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.setClearColor(0x000000, 0);
+    state.renderer = renderer;
+
+    const scene = new THREE.Scene();
+    state.scene = scene;
+
+    const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 100);
+    camera.position.set(0, 0.2, 6.4);
+    camera.lookAt(0, 0, 0);
+    state.camera = camera;
+
+    scene.add(new THREE.AmbientLight(0x9fb0cf, 1.5));
+    const key = new THREE.DirectionalLight(0xffffff, 1.7);
+    key.position.set(3, 5, 4);
+    scene.add(key);
+    const rim = new THREE.DirectionalLight(0x5f83ff, 1.0);
+    rim.position.set(-4, 2, -3);
+    scene.add(rim);
+
+    const phone = new THREE.Group();
+    scene.add(phone);
+    state.phone = phone;
+
+    // Rounded-phone body from a rounded-rect extrusion (core THREE, no addon).
+    const bodyW = 1.8, bodyH = 3.6, bodyR = 0.24, bodyD = 0.18, bevel = 0.035;
+    const shape = new THREE.Shape();
+    {
+      const x = -bodyW / 2, y = -bodyH / 2, w = bodyW, h = bodyH, r = bodyR;
+      shape.moveTo(x + r, y);
+      shape.lineTo(x + w - r, y);
+      shape.quadraticCurveTo(x + w, y, x + w, y + r);
+      shape.lineTo(x + w, y + h - r);
+      shape.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+      shape.lineTo(x + r, y + h);
+      shape.quadraticCurveTo(x, y + h, x, y + h - r);
+      shape.lineTo(x, y + r);
+      shape.quadraticCurveTo(x, y, x + r, y);
+    }
+    const bodyGeo = new THREE.ExtrudeGeometry(shape, {
+      depth: bodyD, bevelEnabled: true, bevelThickness: bevel,
+      bevelSize: bevel, bevelSegments: 3, curveSegments: 12,
+    });
+    bodyGeo.computeBoundingBox();
+    const frontZ = (bodyGeo.boundingBox && bodyGeo.boundingBox.max) ? bodyGeo.boundingBox.max.z : (bodyD / 2 + bevel);
+    const body = new THREE.Mesh(bodyGeo, new THREE.MeshStandardMaterial({ color: 0x2a3346, metalness: 0.65, roughness: 0.4 }));
+    phone.add(body);
+
+    // Live screen: a 2D canvas texture showing device name + battery %.
+    const screenCanvas = document.createElement('canvas');
+    screenCanvas.width = 256;
+    screenCanvas.height = 512;
+    state.screenCanvas = screenCanvas;
+    state.screenCtx = screenCanvas.getContext('2d');
+    const screenTex = new THREE.CanvasTexture(screenCanvas);
+    screenTex.minFilter = THREE.LinearFilter;
+    screenTex.magFilter = THREE.LinearFilter;
+    state.screenTex = screenTex;
+
+    // Dark bezel + glowing screen plane.
+    const bezel = new THREE.Mesh(
+      new THREE.PlaneGeometry(bodyW * 0.92, bodyH * 0.96),
+      new THREE.MeshBasicMaterial({ color: 0x070a12 })
+    );
+    bezel.position.z = frontZ + 0.006;
+    phone.add(bezel);
+
+    const screenPlane = new THREE.Mesh(
+      new THREE.PlaneGeometry(bodyW * 0.84, bodyH * 0.88),
+      new THREE.MeshBasicMaterial({ map: screenTex })
+    );
+    screenPlane.position.z = frontZ + 0.012;
+    phone.add(screenPlane);
+    state.screenPlane = screenPlane;
+
+    drawScreenTexture(state, '—', '—');
+
+    // Manual pointer control: hover tilt + drag to rotate (no OrbitControls).
+    const down = (e) => {
+      state.dragging = true;
+      state.lastX = e.clientX;
+      state.lastY = e.clientY;
+      if (canvas.setPointerCapture) { try { canvas.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ } }
+    };
+    const move = (e) => {
+      const r = canvas.getBoundingClientRect();
+      if (r.width && r.height) {
+        const px = (e.clientX - r.left) / r.width - 0.5;
+        const py = (e.clientY - r.top) / r.height - 0.5;
+        state.hoverTiltY = px * 0.55;
+        state.hoverTiltX = -py * 0.4;
+      }
+      if (state.dragging) {
+        const dx = e.clientX - state.lastX;
+        const dy = e.clientY - state.lastY;
+        state.lastX = e.clientX;
+        state.lastY = e.clientY;
+        state.dragRotY += dx * 0.011;
+        state.dragRotX += dy * 0.011;
+        state.dragRotX = Math.max(-1.15, Math.min(1.15, state.dragRotX));
+      }
+    };
+    const up = () => { state.dragging = false; };
+    state.handlers = { down, move, up };
+    canvas.style.touchAction = 'none';
+    canvas.addEventListener('pointerdown', down);
+    canvas.addEventListener('pointermove', move);
+    canvas.addEventListener('pointerup', up);
+    canvas.addEventListener('pointercancel', up);
+
+    statusEl.textContent = 'Drag / move to tilt · refreshes every 5s';
+    statusEl.classList.remove('p3d__status--error');
+
+    function resizeIfNeeded() {
+      const w = container.clientWidth;
+      const h = container.clientHeight;
+      if (!w || !h) return;
+      if (w !== state.w || h !== state.h) {
+        state.w = w;
+        state.h = h;
+        renderer.setSize(w, h, false);
+        camera.aspect = w / h;
+        camera.updateProjectionMatrix();
+      }
+    }
+
+    function animate() {
+      state.raf = requestAnimationFrame(animate);
+      if (phone3d !== state) return; // disposed
+      resizeIfNeeded();
+      if (!state.dragging) state.baseRotY += 0.0042;
+      const ty = state.baseRotY + state.dragRotY + state.hoverTiltY;
+      const tx = state.dragRotX + state.hoverTiltX;
+      phone.rotation.y += (ty - phone.rotation.y) * 0.14;
+      phone.rotation.x += (tx - phone.rotation.x) * 0.14;
+      renderer.render(scene, camera);
+    }
+    animate();
+
+    // Live screen text: battery + deviceinfo, refreshed at most every ~5s.
+    const refresh = async () => {
+      if (phone3d !== state) return;
+      const [battery, info] = await Promise.all([
+        safeCommand('battery', undefined, { log: false }),
+        safeCommand('deviceinfo', undefined, { log: false }),
+      ]);
+      if (phone3d !== state) return;
+      let name = '';
+      const anyOnline = (selectedDeviceId
+        ? devicesCache.find((d) => (d.device_id || d.id) === selectedDeviceId)
+        : null) || devicesCache.find((d) => d.online);
+      if (anyOnline) name = anyOnline.name || anyOnline.model || anyOnline.device_id || '';
+      if (!name && info) name = compact(info, 22);
+      drawScreenTexture(state, name || '—', battery ? summarizeBattery(battery) : '—');
+    };
+    refresh();
+    state.timer = setInterval(refresh, 5000);
+  }
+
+  function drawScreenTexture(state, name, batt) {
+    const ctx = state.screenCtx;
+    if (!ctx) return;
+    const W = state.screenCanvas.width, H = state.screenCanvas.height;
+    ctx.clearRect(0, 0, W, H);
+    const grad = ctx.createLinearGradient(0, 0, 0, H);
+    grad.addColorStop(0, '#0f1c33');
+    grad.addColorStop(1, '#080d1a');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#1a2740';
+    ctx.beginPath();
+    ctx.arc(W / 2, 24, 22, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#7aa5ff';
+    ctx.font = '600 26px system-ui, -apple-system, Segoe UI, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    let label = String(name || '—');
+    if (label.length > 14) label = label.slice(0, 13) + '…';
+    ctx.fillText(label, W / 2, 96);
+    ctx.fillStyle = '#eaf0fb';
+    ctx.font = '800 56px system-ui, -apple-system, Segoe UI, sans-serif';
+    ctx.fillText(String(batt || '—'), W / 2, 190);
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = '600 22px system-ui, -apple-system, Segoe UI, sans-serif';
+    ctx.fillText('BATTERY', W / 2, 244);
+    ctx.fillStyle = '#5a6b8c';
+    ctx.font = '26px system-ui, sans-serif';
+    ctx.fillText('📱', W / 2, 316);
+    if (state.screenTex) state.screenTex.needsUpdate = true;
+  }
+
+  function disposePhone3d() {
+    phone3dSerial++; // invalidate any in-flight Three.js load
+    const s = phone3d;
+    phone3d = null;
+    if (!s) return;
+    if (s.raf) cancelAnimationFrame(s.raf);
+    s.raf = 0;
+    if (s.timer) clearInterval(s.timer);
+    s.timer = 0;
+    if (s.canvas && s.handlers) {
+      s.canvas.removeEventListener('pointerdown', s.handlers.down);
+      s.canvas.removeEventListener('pointermove', s.handlers.move);
+      s.canvas.removeEventListener('pointerup', s.handlers.up);
+      s.canvas.removeEventListener('pointercancel', s.handlers.up);
+    }
+    if (s.scene) {
+      s.scene.traverse((o) => {
+        if (o.geometry) o.geometry.dispose();
+        if (o.material) {
+          if (Array.isArray(o.material)) o.material.forEach((m) => m.dispose());
+          else o.material.dispose();
+        }
+      });
+    }
+    if (s.screenTex) s.screenTex.dispose();
+    s.screenTex = null;
+    if (s.renderer) s.renderer.dispose();
+    s.renderer = null;
+  }
+
+  // The four additional tiles (History / Gallery / Devices / Phone 3D).
+  const SPECIALS = [
+    { id: 'history', emoji: '🕘', label: 'History', sub: 'Recent commands', color: '#8b5cf6', build: openHistory },
+    { id: 'gallery', emoji: '🖼️', label: 'Gallery', sub: 'Captured media', color: '#f2b13c', build: openGallery },
+    { id: 'devices', emoji: '📱', label: 'Devices', sub: 'All phones · status', color: '#3fb96a', build: openDevices },
+    { id: 'phone3d', emoji: '🛰️', label: 'Phone 3D', sub: 'Live phone model', color: '#38b2ac', onClose: disposePhone3d, build: openPhone3d },
+  ];
 
   // ---------------------------------------------------------------------------
   // PWA install prompt
@@ -1796,6 +2436,7 @@
 
   renderGrid();
   initParticles();
+  initSound();
 
   refreshMcpStatus();
   renderMcpTools();

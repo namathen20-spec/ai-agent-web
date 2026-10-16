@@ -1,7 +1,7 @@
 /* Network-first service worker (offline fallback). */
 // Bump CACHE_NAME on every deploy so returning clients revalidate and pick up
-// newly versioned assets (index.html currently loads app.js?v=12 / style.css?v=8).
-const CACHE_NAME = 'ai-agent-v5';
+// newly versioned assets (index.html currently loads app.js?v=17 / style.css?v=12).
+const CACHE_NAME = 'ai-agent-v7';
 const APP_SHELL = [
   './',
   './index.html',

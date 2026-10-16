@@ -48,6 +48,7 @@
   /* timing */
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
   --ease-snappy: cubic-bezier(0.32, 0.72, 0.24, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 /* ---- light theme overrides (default is dark) ---- */
@@ -327,7 +328,7 @@ html, body {
   transform-style: preserve-3d;
   transform: perspective(900px) rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg));
   transition:
-    transform 0.18s ease,
+    transform 0.22s var(--ease-spring),
     box-shadow 0.28s ease,
     border-color 0.28s ease,
     background 0.28s ease;
@@ -405,8 +406,9 @@ html, body {
   min-height: 100%;
 }
 @keyframes toolZoomIn {
-  from { opacity: 0; transform: perspective(1200px) translateZ(-80px) rotateX(6deg) scale(0.96); }
-  to   { opacity: 1; transform: perspective(1200px) translateZ(0) rotateX(0) scale(1); }
+  0%   { opacity: 0; transform: perspective(1200px) translateZ(-80px) rotateX(6deg) scale(0.94); }
+  55%  { opacity: 1; transform: perspective(1200px) translateZ(0) rotateX(0) scale(1.025); }
+  100% { opacity: 1; transform: perspective(1200px) translateZ(0) rotateX(0) scale(1); }
 }
 
 .tool-view__head {
@@ -755,7 +757,7 @@ select {
     box-shadow 0.18s ease, transform 0.12s ease;
 }
 .btn:hover { background: var(--panel-2-hover); transform: translateY(-1px); }
-.btn:active { transform: translateY(0); }
+.btn:active { transform: scale(0.96); }
 .btn:disabled { opacity: 0.55; cursor: default; }
 
 .btn--primary {
@@ -982,6 +984,128 @@ select {
 .mcp-tools li:hover { background: var(--panel-2-hover); border-color: var(--border-soft); transform: translateY(-1px); }
 .mcp-tool__cat { font-weight: 600; }
 .mcp-tool__names { color: var(--text-dim); font-size: 11px; word-break: break-word; }
+
+/* =====================================================================
+   Feature views — History / Gallery / Devices / Phone 3D (#2, #5, #8, #9)
+   ===================================================================== */
+
+/* ---- Command history (#8) ---- */
+.history { display: flex; flex-direction: column; gap: 12px; }
+.history__count { font-size: 12px; color: var(--text-faint); }
+.history__list { display: flex; flex-direction: column; gap: 10px; }
+.history__row {
+  display: flex; flex-direction: column; gap: 6px;
+  padding: 12px 14px;
+  background: var(--panel-2);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-soft);
+  transition: background 0.16s ease, border-color 0.16s ease, transform 0.16s ease;
+}
+.history__row:hover { background: var(--panel-2-hover); border-color: var(--border-hover); transform: translateY(-1px); }
+.history__top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.history__time { font-size: 11px; color: var(--text-faint); font-variant-numeric: tabular-nums; }
+.history__tool {
+  font-size: 11px; font-weight: 700; color: var(--accent-2);
+  background: var(--chip-bg); border: 1px solid var(--chip-border);
+  padding: 1px 8px; border-radius: 999px;
+}
+.history__cmd {
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  font-size: 12.5px; color: var(--text); word-break: break-word;
+}
+.history__preview { font-size: 12px; color: var(--text-dim); line-height: 1.5; word-break: break-word; }
+.history__rerun { align-self: flex-start; padding: 7px 12px; font-size: 12.5px; }
+.history__result { margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--border-soft); }
+
+/* ---- Media gallery (#2) ---- */
+.gallery { display: flex; flex-direction: column; gap: 12px; }
+.gallery__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 12px;
+}
+.gallery__item {
+  position: relative;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-soft);
+  background: var(--panel-solid);
+  overflow: hidden;
+  box-shadow: var(--shadow-soft);
+  transition: transform 0.18s var(--ease-spring), border-color 0.18s ease, box-shadow 0.18s ease;
+}
+.gallery__item img,
+.gallery__item video {
+  display: block; width: 100%; height: 150px; object-fit: cover;
+  background: var(--panel-2);
+}
+.gallery__item--img { cursor: zoom-in; }
+.gallery__item--img:hover {
+  transform: translateY(-3px) scale(1.02);
+  border-color: var(--border-hover);
+  box-shadow: 0 0 0 1px var(--accent), 0 12px 30px rgba(0, 0, 0, 0.4);
+}
+.gallery__audio { display: flex; align-items: center; gap: 10px; padding: 12px; min-height: 62px; }
+.gallery__audio-icon { font-size: 22px; line-height: 1; }
+.gallery__audio audio { flex: 1; min-width: 0; height: 40px; background: transparent; border: none; padding: 0; }
+
+/* ---- Multi-device dashboard (#5) ---- */
+.devices { display: flex; flex-direction: column; gap: 12px; }
+.device-card {
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 14px;
+  background: var(--panel-2);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-soft);
+  transition: background 0.16s ease, border-color 0.16s ease, transform 0.16s ease;
+}
+.device-card:hover { background: var(--panel-2-hover); border-color: var(--border-hover); transform: translateY(-1px); }
+.device-card__head { display: flex; align-items: center; gap: 10px; }
+.device-card__name { font-size: 14.5px; font-weight: 700; letter-spacing: -0.01em; }
+.device-card__status { display: flex; flex-wrap: wrap; gap: 8px 16px; font-size: 12.5px; color: var(--text-dim); }
+.device-card__stat { display: inline-flex; align-items: center; gap: 5px; }
+
+/* ---- Phone 3D model (#9) ---- */
+.p3d {
+  position: relative;
+  display: block;
+  height: clamp(400px, 56vh, 560px);
+  min-height: 360px;
+}
+.p3d__canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-soft);
+  background:
+    radial-gradient(120% 120% at 50% 28%, rgba(79, 140, 255, 0.12), transparent 58%),
+    radial-gradient(120% 120% at 50% 100%, rgba(139, 92, 246, 0.10), transparent 55%),
+    #0a0f1c;
+  box-shadow: var(--shadow-soft), var(--glass-inner);
+  cursor: grab;
+  touch-action: none;
+}
+.p3d__canvas:active { cursor: grabbing; }
+.p3d__status {
+  position: absolute;
+  left: 12px; right: 12px; bottom: 10px;
+  text-align: center;
+  font-size: 12.5px;
+  color: var(--text-dim);
+  pointer-events: none;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.7);
+}
+.p3d__status--error { color: var(--danger); }
+
+@media (max-width: 760px) {
+  .gallery__grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  .gallery__item img, .gallery__item video { height: 120px; }
+  .p3d { height: 56vh; min-height: 320px; }
+}
 
 /* =====================================================================
    Responsive
