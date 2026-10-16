@@ -2258,12 +2258,177 @@
     s.renderer = null;
   }
 
-  // The four additional tiles (History / Gallery / Devices / Phone 3D).
+  // ---------------------------------------------------------------------------
+  // Live Camera / Live Audio (WebRTC peer-to-peer).
+  // The relay (gokul-agent-server.onrender.com) only forwards SDP/ICE over
+  // wss://<relay>/signal?room=<device_id>&role=browser. The actual video/audio
+  // flows phone <-> browser over the STUN/ICE-negotiated peer route, so the free
+  // Render relay is never in the media path.
+  // ---------------------------------------------------------------------------
+  const SIGNAL_WS_BASE = 'wss://gokul-agent-server.onrender.com/signal';
+  const LIVE_STUN = 'stun:stun.l.google.com:19302';
+
+  // Active session: { ws, pc, video, timer, gotOffer } or null.
+  let liveStream = null;
+
+  function liveCleanup() {
+    const s = liveStream;
+    liveStream = null;
+    if (!s) return;
+    try { if (s.timer) clearInterval(s.timer); } catch (err) { /* ignore */ }
+    try { if (s.ws) { s.ws.send(JSON.stringify({ type: 'stop' })); s.ws.close(1000, 'stop'); } } catch (err) { /* ignore */ }
+    try { if (s.pc) s.pc.close(); } catch (err) { /* ignore */ }
+    try { if (s.video) s.video.srcObject = null; } catch (err) { /* ignore */ }
+  }
+
+  // Build the Live Camera / Live Audio tile view.
+  function openLiveStream(scope, mode) {
+    const isVideo = mode === 'camera';
+    const box = el('div', 'live');
+
+    const status = el('div', 'hint', 'Ready — Start to stream live.');
+
+    const startBtn = makeButton(isVideo ? '▶ Start camera' : '▶ Start mic',
+      () => startLive(mode, video, status), 'tc-btn tc-btn--primary');
+    const stopBtn = makeButton('⏹ Stop', () => {
+      liveCleanup();
+      status.textContent = 'Stopped.';
+    }, 'tc-btn tc-btn--danger');
+    const btnRow = el('div', 'seg');
+    btnRow.appendChild(startBtn);
+    btnRow.appendChild(stopBtn);
+
+    const video = el('video', 'live__video');
+    video.muted = isVideo;         // camera muted (no echo loop); audio audible
+    video.autoplay = true;
+    video.playsInline = true;
+    video.setAttribute('playsinline', '');
+    video.setAttribute('autoplay', '');
+    if (!isVideo) video.style.display = 'none'; // audio-only: hidden player
+
+    const mediaWrap = el('div', 'result-media');
+    mediaWrap.appendChild(video);
+
+    box.appendChild(btnRow);
+    box.appendChild(status);
+    box.appendChild(mediaWrap);
+    scope.result.appendChild(box);
+  }
+
+  async function startLive(mode, video, status) {
+    const isVideo = mode === 'camera';
+
+    if (!window.RTCPeerConnection) {
+      status.textContent = '⚠️ This browser does not support live streaming (RTCPeerConnection missing).';
+      return;
+    }
+
+    liveCleanup(); // drop any prior session
+
+    // Resolve the target phone (selected device, else first online device).
+    let devices = devicesCache;
+    if (!devices || !devices.length) {
+      try { devices = await fetchDevices(); populateDeviceSelect(devices); } catch (err) { devices = devicesCache || []; }
+    }
+    const id = selectedDeviceId ||
+      ((devices || []).find((d) => d.online) || {}).device_id ||
+      ((devices || [])[0] || {}).device_id || '';
+    if (!id) {
+      status.textContent = 'No phone registered — wait for a phone to come online, then Start again.';
+      return;
+    }
+
+    const pc = new RTCPeerConnection({ iceServers: [{ urls: LIVE_STUN }] });
+    const remoteStream = new MediaStream();
+    const s = { ws: null, pc, video, timer: null, gotOffer: false, deviceId: id };
+    liveStream = s;
+
+    pc.ontrack = (ev) => {
+      if (video.srcObject !== remoteStream) {
+        video.srcObject = remoteStream;
+        video.play().catch(() => { /* autoplay is on the user gesture for audio */ });
+      }
+      remoteStream.addTrack(ev.track);
+      status.textContent = isVideo ? '🎥 Streaming live (video + mic)…' : '🎙️ Streaming live audio…';
+    };
+
+    pc.onicecandidate = (ev) => {
+      if (!ev.candidate || !s.ws) return;
+      try {
+        s.ws.send(JSON.stringify({
+          type: 'ice',
+          candidate: {
+            candidate: ev.candidate.candidate,
+            sdpMid: ev.candidate.sdpMid,
+            sdpMLineIndex: ev.candidate.sdpMLineIndex,
+          },
+        }));
+      } catch (err) { /* ignore */ }
+    };
+
+    const wsUrl = SIGNAL_WS_BASE + '?room=' + encodeURIComponent(id) + '&role=browser';
+    status.textContent = 'Connecting to ' + id + '…';
+
+    let ws;
+    try {
+      ws = new WebSocket(wsUrl);
+    } catch (err) {
+      status.textContent = '⚠️ WebSocket not supported / blocked.';
+      liveCleanup();
+      return;
+    }
+    s.ws = ws;
+
+    ws.onopen = () => {
+      // Announce ourselves; re-request the offer until the phone replies (the
+      // phone may have finished its setup before we joined the room).
+      const ping = () => {
+        if (s.gotOffer || liveStream !== s) return;
+        try { ws.send(JSON.stringify({ type: 'start' })); } catch (err) { /* ignore */ }
+      };
+      ping();
+      s.timer = setInterval(ping, 2500);
+    };
+
+    ws.onmessage = async (evt) => {
+      let m;
+      try { m = JSON.parse(evt.data); } catch (err) { return; }
+      const type = m && m.type;
+      if (type === 'offer' && m.sdp && m.sdp.sdp) {
+        if (s.gotOffer) return; // answer only once
+        s.gotOffer = true;
+        try {
+          await pc.setRemoteDescription(new RTCSessionDescription(m.sdp));
+          const answer = await pc.createAnswer();
+          await pc.setLocalDescription(answer);
+          ws.send(JSON.stringify({ type: 'answer', sdp: { type: 'answer', sdp: answer.sdp } }));
+          status.textContent = 'Negotiating… sending answer';
+        } catch (err) {
+          status.textContent = '⚠️ Negotiation failed: ' + (err && err.message ? err.message : err);
+        }
+      } else if (type === 'ice' && m.candidate) {
+        try {
+          await pc.addIceCandidate(new RTCIceCandidate({
+            candidate: m.candidate.candidate,
+            sdpMid: m.candidate.sdpMid,
+            sdpMLineIndex: m.candidate.sdpMLineIndex,
+          }));
+        } catch (err) { /* ignore */ }
+      }
+    };
+
+    ws.onerror = () => { status.textContent = '⚠️ Signaling unavailable (relay unreachable).'; };
+    ws.onclose = () => { if (liveStream === s) status.textContent = 'Signaling closed — press Stop, then Back.'; };
+  }
+
+  // The additional tiles (History / Gallery / Devices / Phone 3D / Live).
   const SPECIALS = [
     { id: 'history', emoji: '🕘', label: 'History', sub: 'Recent commands', color: '#8b5cf6', build: openHistory },
     { id: 'gallery', emoji: '🖼️', label: 'Gallery', sub: 'Captured media', color: '#f2b13c', build: openGallery },
     { id: 'devices', emoji: '📱', label: 'Devices', sub: 'All phones · status', color: '#3fb96a', build: openDevices },
     { id: 'phone3d', emoji: '🛰️', label: 'Phone 3D', sub: 'Live phone model', color: '#38b2ac', onClose: disposePhone3d, build: openPhone3d },
+    { id: 'livecamera', emoji: '🎥', label: 'Live Camera', sub: 'WebRTC video + mic', color: '#ff6b6b', onClose: liveCleanup, build: (s) => openLiveStream(s, 'camera') },
+    { id: 'liveaudio', emoji: '🎙️', label: 'Live Audio', sub: 'WebRTC mic streaming', color: '#38b2ac', onClose: liveCleanup, build: (s) => openLiveStream(s, 'audio') },
   ];
 
   // ---------------------------------------------------------------------------
