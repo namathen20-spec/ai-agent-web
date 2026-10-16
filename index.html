@@ -3,9 +3,9 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <meta name="theme-color" content="#0a0d12" />
-  <meta name="description" content="AI Agent — a personal, installable AI chat PWA (BYOK)." />
-  <title>AI Agent</title>
+  <meta name="theme-color" content="#070a12" />
+  <meta name="description" content="AI Agent — a 3D phone Control Center + BYOK AI chat PWA." />
+  <title>AI Agent · Control Center</title>
 
   <!-- PWA -->
   <link rel="manifest" href="manifest.json" />
@@ -26,7 +26,7 @@
     })();
   </script>
 
-  <link rel="stylesheet" href="style.css?v=9" />
+  <link rel="stylesheet" href="style.css?v=10" />
 </head>
 <body>
   <!-- ===================== Password gate (lock screen) ===================== -->
@@ -50,28 +50,91 @@
     </form>
   </div>
 
-  <div class="app">
-    <!-- ===================== Sidebar / Settings ===================== -->
-    <aside class="sidebar" id="sidebar">
-      <div class="sidebar__header">
-        <div class="brand">
-          <span class="brand__logo" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-              <path d="M12 2l2.3 7.7L22 12l-7.7 2.3L12 22l-2.3-7.7L2 12l7.7-2.3L12 2z" />
-            </svg>
-          </span>
-          <div>
-            <h1>AI Agent</h1>
-            <p class="brand__sub">Personal AI · BYOK</p>
-          </div>
-        </div>
-        <div class="sidebar__actions">
-          <button class="icon-btn" id="themeToggle" aria-label="Switch to light theme" title="Switch to light theme">🌙</button>
-          <button class="icon-btn" id="closeSidebar" aria-label="Close settings" title="Close">✕</button>
+  <!-- ===================== Animated background (orbs + particles) ===================== -->
+  <div class="bg-effects" aria-hidden="true">
+    <div class="orb orb--1"></div>
+    <div class="orb orb--2"></div>
+    <div class="orb orb--3"></div>
+    <canvas id="particles"></canvas>
+  </div>
+
+  <!-- ===================== Control Center shell ===================== -->
+  <div class="cc">
+    <!-- Top header -->
+    <header class="cc-header">
+      <div class="brand">
+        <span class="brand__logo" aria-hidden="true">🛰️</span>
+        <div class="brand__text">
+          <h1>Control Center</h1>
+          <p class="brand__sub">AI Agent · phone remote</p>
         </div>
       </div>
+      <div class="cc-header__controls">
+        <select id="deviceSelect" class="device-select" title="Target phone" aria-label="Target phone">
+          <option value="">📱 Auto device</option>
+        </select>
+        <button class="btn btn--chat" id="chatToggle" type="button" title="Toggle AI chat">
+          <span>💬</span> AI Chat
+        </button>
+      </div>
+    </header>
 
-      <!-- Provider selector -->
+    <!-- Main area -->
+    <main class="cc-main">
+      <!-- Grid of tiles -->
+      <section class="grid-view" id="gridView">
+        <div class="grid-view__head">
+          <h2 class="grid-view__title">Tap a tile</h2>
+          <p class="grid-view__hint">Live control over the connected phone</p>
+        </div>
+        <div class="grid" id="tileGrid" aria-live="polite"></div>
+      </section>
+
+      <!-- Single tool view (replaces the grid while open) -->
+      <section class="tool-view" id="toolView" hidden>
+        <div class="tool-view__head">
+          <button class="btn btn--ghost btn--back" id="backBtn" type="button">← Back</button>
+          <h2 class="tool-view__title" id="toolTitle"></h2>
+          <span class="tool-view__spacer"></span>
+        </div>
+        <div class="tool-view__body">
+          <div class="tool-controls" id="toolControls"></div>
+          <div class="tool-result" id="toolResult"></div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Bottom status bar -->
+    <footer class="cc-statusbar">
+      <span class="cc-statusbar__item" id="statusDotWrap">
+        <span class="dot" id="statusDot"></span>
+        <span id="statusDevice"></span>
+      </span>
+      <span class="cc-statusbar__item" id="statusBattery">🔋 —</span>
+      <span class="cc-statusbar__item" id="statusStorage">💾 —</span>
+      <span class="cc-statusbar__item" id="statusNetwork">📶 —</span>
+    </footer>
+  </div>
+
+  <!-- Soft scrim behind the chat panel on mobile -->
+  <div class="chat-scrim" id="chatScrim"></div>
+
+  <!-- ===================== AI Chat panel (BYOK — relocated, not removed) ===================== -->
+  <aside class="chat-panel" id="chatPanel" aria-label="AI chat">
+    <div class="chat-panel__header">
+      <div class="chat__title">
+        <span id="activeModel">Local (mock)</span>
+        <span class="chat__status" id="chatStatus">offline · mock mode</span>
+      </div>
+      <div class="chat-panel__actions">
+        <button class="icon-btn" id="themeToggle" aria-label="Switch to light theme" title="Switch to light theme">🌙</button>
+        <button class="icon-btn" id="closeChat" aria-label="Close chat" title="Close">✕</button>
+      </div>
+    </div>
+
+    <!-- Settings (collapsed by default so the chat stays focused) -->
+    <details class="chat-settings" id="settingsPane">
+      <summary>⚙️ Model &amp; settings</summary>
       <section class="panel">
         <h2 class="panel__title">Model / Provider</h2>
         <label class="field">
@@ -104,8 +167,7 @@
             </label>
             <p class="hint">
               🔒 Your key is stored <strong>only</strong> in this browser's
-              <code>localStorage</code> and never hardcoded or logged. Later it can be
-              sent to the backend encrypted for multi-device sync.
+              <code>localStorage</code> and never hardcoded or logged.
             </p>
             <button type="submit" class="btn btn--primary">Save provider</button>
             <button type="button" class="btn btn--ghost" id="removeProvider" hidden>Remove selected</button>
@@ -113,9 +175,8 @@
         </details>
       </section>
 
-      <!-- MCP settings -->
       <section class="panel">
-        <h2 class="panel__title">MCP servers</h2>
+        <h2 class="panel__title">Phone relay</h2>
         <div class="mcp-status" id="mcpStatus">
           <span class="dot dot--offline" id="mcpDot"></span>
           <span id="mcpStatusText">Connecting…</span>
@@ -133,35 +194,21 @@
           🔒 Lock
         </button>
       </div>
-    </aside>
+    </details>
 
-    <!-- ===================== Main chat ===================== -->
-    <main class="chat">
-      <header class="chat__header">
-        <button class="icon-btn" id="openSidebar" aria-label="Open settings">☰</button>
-        <div class="chat__title">
-          <span id="activeModel">Local (mock)</span>
-          <span class="chat__status" id="chatStatus">offline · mock mode</span>
-        </div>
-        <select id="deviceSelect" class="device-select" title="Target device (AI only controls this phone)">
-          <option value="">📱 Auto device</option>
-        </select>
-      </header>
+    <div class="messages" id="messages" aria-live="polite"></div>
 
-      <div class="messages" id="messages" aria-live="polite"></div>
+    <form class="composer" id="composer">
+      <textarea
+        id="input"
+        rows="1"
+        placeholder="Message AI Agent… (Enter to send, Shift+Enter for newline)"
+      ></textarea>
+      <button type="button" class="composer__mic" id="micBtn" aria-label="Voice input (Tamil)" title="Voice input (Tamil)">🎤</button>
+      <button type="submit" class="btn btn--primary composer__send" aria-label="Send">Send</button>
+    </form>
+  </aside>
 
-      <form class="composer" id="composer">
-        <textarea
-          id="input"
-          rows="1"
-          placeholder="Message AI Agent… (Enter to send, Shift+Enter for newline)"
-        ></textarea>
-        <button type="button" class="composer__mic" id="micBtn" aria-label="Voice input (Tamil)" title="Voice input (Tamil)">🎤</button>
-        <button type="submit" class="btn btn--primary composer__send" aria-label="Send">Send</button>
-      </form>
-    </main>
-  </div>
-
-  <script src="app.js?v=13"></script>
+  <script src="app.js?v=14"></script>
 </body>
 </html>

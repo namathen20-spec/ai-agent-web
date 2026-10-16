@@ -1,4 +1,5 @@
 /* AI Agent — frontend logic (no build step, vanilla JS).
+ * 3D phone "Control Center" on top of the existing BYOK chat + PWA plumbing.
  * BYOK keys live in localStorage only. Nothing is hardcoded or logged.
  */
 (function () {
@@ -18,6 +19,9 @@
   const BACKEND_BASE = 'https://ai-agent-backend.ai-agent-backend.workers.dev';
   const BACKEND_CHAT_URL = BACKEND_BASE + '/api/chat';
   const BACKEND_DEVICES_URL = BACKEND_BASE + '/api/devices';
+  // Direct raw-relay command endpoint (no backend changes needed — the Worker
+  // already exposes POST /api/command → { ok, result }).
+  const BACKEND_COMMAND_URL = BACKEND_BASE + '/api/command';
 
   const LOCAL_PROVIDER = {
     id: 'local',
@@ -36,6 +40,226 @@
     { cat: '📂 Files & Media', tools: 'file_get, file_put, record_audio, camera_link, screenshot_link' },
     { cat: '📜 Activity', tools: 'touch_feed, notifications, life_log_*' },
     { cat: '🖥️ Screen', tools: 'live_start, live_stop, tap_screen, phone_echo' },
+  ];
+
+  // ---------------------------------------------------------------------------
+  // Control Center TOOLS — single source of truth (emoji + relay command map).
+  // `build(scope)` renders that tool's controls; `scope` = { controls, result,
+  // run(command, kind), runMulti([{cmd,label}]) }.
+  // ---------------------------------------------------------------------------
+  const TOOLS = [
+    {
+      id: 'camera', emoji: '📷', label: 'Camera', sub: 'Back / front photo', color: '#4f8cff',
+      build(scope) {
+        scope.controls.appendChild(el('span', 'tool-controls__label', 'Lens'));
+        let lens = 'back';
+        const back = makeButton('🔘 Back', () => setLens('back'));
+        const front = makeButton('🔘 Front', () => setLens('front'));
+        function setLens(l) {
+          lens = l;
+          back.classList.toggle('tc-btn--active', l === 'back');
+          front.classList.toggle('tc-btn--active', l === 'front');
+        }
+        setLens('back');
+        scope.controls.appendChild(back);
+        scope.controls.appendChild(front);
+        scope.controls.appendChild(
+          makeButton('📸 Capture', () => scope.run('camera_link ' + lens, 'image'), 'tc-btn tc-btn--primary')
+        );
+      },
+    },
+    {
+      id: 'screenshot', emoji: '📸', label: 'Screenshot', sub: 'Snap the screen', color: '#4f8cff',
+      build(scope) {
+        scope.controls.appendChild(
+          makeButton('📸 Capture', () => scope.run('screenshot_link', 'image'), 'tc-btn tc-btn--primary')
+        );
+      },
+    },
+    {
+      id: 'audio', emoji: '🎤', label: 'Audio', sub: 'Record mic · WAV', color: '#ff6b6b',
+      build(scope) {
+        scope.controls.appendChild(el('span', 'tool-controls__label', 'Duration (seconds)'));
+        const seg = makeSeg(['10', '30', '60'], 0);
+        scope.controls.appendChild(seg.wrap);
+        scope.controls.appendChild(
+          makeButton('🔴 Record', () => scope.run('record_audio ' + seg.value, 'audio'), 'tc-btn tc-btn--danger')
+        );
+      },
+    },
+    {
+      id: 'screenrecord', emoji: '🎥', label: 'Screen Record', sub: 'Record the screen', color: '#ff8f6b',
+      build(scope) {
+        scope.controls.appendChild(el('span', 'tool-controls__label', 'Duration (seconds)'));
+        const seg = makeSeg(['10', '30', '60'], 0);
+        scope.controls.appendChild(seg.wrap);
+        scope.controls.appendChild(
+          makeButton('⏺ Record', () => scope.run('screen_record_link ' + seg.value, 'video'), 'tc-btn tc-btn--primary')
+        );
+      },
+    },
+    {
+      id: 'location', emoji: '📍', label: 'Location', sub: 'GPS + maps link', color: '#3fb96a',
+      build(scope) {
+        scope.controls.appendChild(
+          makeButton('🗺 Get location', () => scope.run('location', 'link'), 'tc-btn tc-btn--primary')
+        );
+      },
+    },
+    {
+      id: 'tap', emoji: '👆', label: 'Tap', sub: 'Tap by % coords', color: '#8b5cf6',
+      build(scope) {
+        const x = makeInput('number', 'X (0-100)', 50);
+        const y = makeInput('number', 'Y (0-100)', 50);
+        scope.controls.appendChild(makeField('X %', x));
+        scope.controls.appendChild(makeField('Y %', y));
+        scope.controls.appendChild(
+          makeButton('👆 Tap %', () => {
+            const xv = clamp(x.value, 0, 100);
+            const yv = clamp(y.value, 0, 100);
+            if (isNaN(xv) || isNaN(yv)) { toast('X and Y must be numbers (0-100)'); return; }
+            scope.run('tap_percent ' + xv + ' ' + yv);
+          }, 'tc-btn tc-btn--primary')
+        );
+        scope.controls.appendChild(makeButton('📐 Get screen size', () => scope.run('screen_size'), 'tc-btn'));
+      },
+    },
+    {
+      id: 'sms', emoji: '💬', label: 'SMS', sub: 'Read & send texts', color: '#38b2ac',
+      build(scope) {
+        scope.controls.appendChild(el('span', 'tool-controls__label', 'Read inbox'));
+        const count = makeInput('number', 'Count (e.g. 5)', 5);
+        scope.controls.appendChild(makeField('Count', count));
+        scope.controls.appendChild(
+          makeButton('📖 Read', () => scope.run('smsread ' + (parseInt(count.value, 10) || 5)), 'tc-btn')
+        );
+
+        scope.controls.appendChild(el('span', 'tool-controls__label', 'Compose & send'));
+        const number = makeInput('tel', 'Phone number', '');
+        const msg = makeInput('text', 'Message', '');
+        scope.controls.appendChild(makeField('Number', number));
+        scope.controls.appendChild(makeField('Message', msg));
+        scope.controls.appendChild(
+          makeButton('📤 Send', () => {
+            const n = number.value.trim();
+            const m = msg.value.trim();
+            if (!n || !m) { toast('Enter a phone number and a message'); return; }
+            scope.run('smssend ' + n + ' ' + m);
+          }, 'tc-btn tc-btn--primary')
+        );
+      },
+    },
+    {
+      id: 'calllog', emoji: '📞', label: 'Call Log', sub: 'Recent calls', color: '#7aa5ff',
+      build(scope) {
+        const count = makeInput('number', 'Count (e.g. 5)', 5);
+        scope.controls.appendChild(makeField('Count', count));
+        scope.controls.appendChild(
+          makeButton('📖 Read', () => scope.run('calllog ' + (parseInt(count.value, 10) || 5)), 'tc-btn tc-btn--primary')
+        );
+      },
+    },
+    {
+      id: 'contacts', emoji: '👤', label: 'Contacts', sub: 'Search contacts', color: '#8b5cf6',
+      build(scope) {
+        const name = makeInput('text', 'Name to search', '');
+        scope.controls.appendChild(makeField('Name', name));
+        scope.controls.appendChild(
+          makeButton('🔍 Find', () => {
+            const q = name.value.trim();
+            if (!q) { toast('Enter a contact name to search'); return; }
+            scope.run('findcontact ' + q);
+          }, 'tc-btn tc-btn--primary')
+        );
+      },
+    },
+    {
+      id: 'files', emoji: '📁', label: 'Files', sub: 'Get / put files', color: '#f2b13c',
+      build(scope) {
+        const gLabel = el('span', 'tool-controls__label', 'Download from phone (get)');
+        const gPath = makeInput('text', '/sdcard/Download/file.txt', '');
+        scope.controls.appendChild(gLabel);
+        scope.controls.appendChild(makeField('Path', gPath));
+        scope.controls.appendChild(
+          makeButton('⬇ Get', () => {
+            const p = gPath.value.trim();
+            if (!p) { toast('Enter a file path'); return; }
+            scope.run('file_get ' + p);
+          }, 'tc-btn')
+        );
+
+        const pLabel = el('span', 'tool-controls__label', 'Upload to phone (put)');
+        const pPath = makeInput('text', '/sdcard/Download/file.txt', '');
+        const pContent = el('textarea');
+        pContent.placeholder = 'File content…';
+        pContent.rows = 2;
+        scope.controls.appendChild(pLabel);
+        scope.controls.appendChild(makeField('Path', pPath));
+        scope.controls.appendChild(makeField('Content', pContent));
+        scope.controls.appendChild(
+          makeButton('⬆ Put', () => {
+            const path = pPath.value.trim();
+            if (!path) { toast('Enter a destination path'); return; }
+            scope.run('file_put ' + path + ' ' + utf8ToBase64(pContent.value));
+          }, 'tc-btn')
+        );
+      },
+    },
+    {
+      id: 'live', emoji: '📺', label: 'Live Screen', sub: 'Mirror the screen', color: '#38b2ac',
+      build(scope) {
+        scope.controls.appendChild(makeButton('▶ Start', () => scope.run('live start', 'link'), 'tc-btn'));
+        scope.controls.appendChild(makeButton('⏹ Stop', () => scope.run('live stop'), 'tc-btn'));
+        scope.controls.appendChild(makeButton('📊 Status', () => scope.run('live status', 'link'), 'tc-btn'));
+      },
+    },
+    {
+      id: 'notifs', emoji: '🔔', label: 'Notifications', sub: 'Read phone notifs', color: '#f2b13c',
+      build(scope) {
+        const count = makeInput('number', 'Count (e.g. 10)', 10);
+        scope.controls.appendChild(makeField('Count', count));
+        scope.controls.appendChild(
+          makeButton('📖 Read', () => scope.run('notifs ' + (parseInt(count.value, 10) || 10)), 'tc-btn tc-btn--primary')
+        );
+      },
+    },
+    {
+      id: 'lifelog', emoji: '📜', label: 'Life Log', sub: 'Start · read · stats', color: '#8b5cf6',
+      build(scope) {
+        scope.controls.appendChild(makeButton('▶ Start', () => scope.run('lifelog start'), 'tc-btn'));
+        scope.controls.appendChild(makeButton('⏹ Stop', () => scope.run('lifelog stop'), 'tc-btn'));
+        const count = makeInput('number', 'Last N events (e.g. 20)', 20);
+        scope.controls.appendChild(makeField('Events', count));
+        scope.controls.appendChild(
+          makeButton('📖 Read', () => scope.run('lifelog read public last ' + (parseInt(count.value, 10) || 20)), 'tc-btn tc-btn--primary')
+        );
+        scope.controls.appendChild(makeButton('📊 Stats', () => scope.run('lifelog stats'), 'tc-btn'));
+      },
+    },
+    {
+      id: 'battery', emoji: '🔋', label: 'Battery / Info', sub: 'Device details', color: '#3fb96a',
+      build(scope) {
+        scope.controls.appendChild(
+          makeButton('🔋 Get device info', () => scope.runMulti([
+            { cmd: 'battery', label: '🔋 Battery' },
+            { cmd: 'deviceinfo', label: '📱 Device info' },
+          ]), 'tc-btn tc-btn--primary')
+        );
+      },
+    },
+    {
+      id: 'status', emoji: '📊', label: 'All Status', sub: 'Battery · storage · net', color: '#4f8cff',
+      build(scope) {
+        scope.controls.appendChild(
+          makeButton('📊 Get all', () => scope.runMulti([
+            { cmd: 'battery', label: '🔋 Battery' },
+            { cmd: 'storage', label: '💾 Storage' },
+            { cmd: 'network', label: '📶 Network' },
+            { cmd: 'deviceinfo', label: '📱 Device info' },
+          ]), 'tc-btn tc-btn--primary')
+        );
+      },
+    },
   ];
 
   let providers = loadProviders();
@@ -107,6 +331,20 @@
   const mcpToolsEl = $('#mcpTools');
   const themeToggle = $('#themeToggle');
   const micBtn = $('#micBtn');
+
+  // Control Center DOM refs
+  const gridView = $('#gridView');
+  const toolView = $('#toolView');
+  const tileGrid = $('#tileGrid');
+  const toolTitle = $('#toolTitle');
+  const toolControlsEl = $('#toolControls');
+  const toolResultEl = $('#toolResult');
+  const backBtn = $('#backBtn');
+  const ccMain = $('.cc-main');
+  const chatPanel = $('#chatPanel');
+  const chatScrim = $('#chatScrim');
+  const chatToggle = $('#chatToggle');
+  const closeChat = $('#closeChat');
 
   // ---------------------------------------------------------------------------
   // Provider selector + list (edit / delete)
@@ -403,23 +641,23 @@
     const box = document.createElement('div');
     box.className = 'msg__media-item';
 
-    let el;
+    let mediaEl;
     if (item.type === 'video') {
-      el = document.createElement('video');
-      el.controls = true;
-      el.preload = 'metadata';
-      el.playsInline = true;
-      el.src = item.url;
+      mediaEl = document.createElement('video');
+      mediaEl.controls = true;
+      mediaEl.preload = 'metadata';
+      mediaEl.playsInline = true;
+      mediaEl.src = item.url;
     } else {
-      el = document.createElement('img');
-      el.loading = 'lazy';
-      el.alt = 'Media';
-      el.src = item.url;
+      mediaEl = document.createElement('img');
+      mediaEl.loading = 'lazy';
+      mediaEl.alt = 'Media';
+      mediaEl.src = item.url;
       // Telegram serves files as application/octet-stream; re-fetch as a Blob
       // with a sniffed mime so the <img> renders inline instead of downloading.
-      renderImageViaBlob(el, item.url);
+      renderImageViaBlob(mediaEl, item.url);
     }
-    el.className = 'msg__media-el';
+    mediaEl.className = 'msg__media-el';
 
     const dl = document.createElement('a');
     dl.className = 'msg__media-dl';
@@ -429,7 +667,7 @@
     dl.download = '';
     dl.textContent = '⬇ Download';
 
-    box.appendChild(el);
+    box.appendChild(mediaEl);
     box.appendChild(dl);
     return box;
   }
@@ -498,8 +736,6 @@
 
   // -------------------------------------------------------------------------
   // Typewriter ("streaming") effect — only NEW assistant replies animate.
-  // Persisted messages render full via renderMessages(); this runs only when
-  // addMessage() is called with animate=true (i.e. a live backend reply).
   // -------------------------------------------------------------------------
   const TYPEWRITER_TICK = 3;  // ms between reveals (~3ms/char)
   const TYPEWRITER_CHARS = 1; // characters revealed per tick
@@ -521,7 +757,6 @@
 
   function typeTextInto(bubble, text) {
     const full = String(text || '');
-    // Respect reduced-motion: reveal the whole term instantly, no loop.
     if (prefersReducedMotion()) {
       bubble.innerHTML = linkify(full);
       return;
@@ -578,12 +813,10 @@
       toast('🔇 Voice output is not supported in this browser');
       return;
     }
-    // Clicking the currently-playing button → stop.
     if (activeSpeaker === btn) {
       speechSynthesis.cancel();
       return;
     }
-    // Cancel any existing speech first, then speak fresh text.
     speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(String(text || ''));
     u.lang = 'ta-IN';
@@ -627,7 +860,6 @@
     return e;
   }
 
-  // Map an HTTP status + backend error text to a friendly error "kind".
   function classifyError(status, detail) {
     const d = String(detail || '').toLowerCase();
     if (status === 401 || status === 403) return 'auth';
@@ -638,7 +870,6 @@
     return 'unknown';
   }
 
-  // Turn a thrown error into a short, friendly prefixed message + raw detail line.
   function formatError(err) {
     const prefixes = {
       network: '🔌 Backend unreachable',
@@ -655,8 +886,6 @@
     return detail ? prefix + '\n' + detail : prefix;
   }
 
-  // Abort a stuck chat request (e.g. an extra-long backend tool loop) after 3
-  // minutes so the UI never hangs indefinitely.
   const CHAT_TIMEOUT_MS = 180000;
 
   async function callBackend(provider, msgs) {
@@ -679,15 +908,12 @@
         signal: controller.signal,
       });
     } catch (err) {
-      // Fetch was aborted by our timeout (long-running tool loop) → friendly
-      // timeout error, not a generic network failure.
       if (err && err.name === 'AbortError') {
         throw errWithKind(
           'timeout',
           'The request took longer than 3 minutes — the tool loop may still be running. Please try again.'
         );
       }
-      // Fetch threw (DNS / connection refused / blocked) → backend unreachable.
       throw errWithKind('network', (err && err.message) ? err.message : 'Failed to fetch');
     } finally {
       clearTimeout(timeoutId);
@@ -698,8 +924,6 @@
 
     if (!res.ok) {
       if (data && data.rate_limited) {
-        // Backend signalled a provider rate limit — carry the retry info up so
-        // handleSend can auto-retry after the cooldown.
         return { rateLimited: true, retryAfter: data.retry_after || 60, error: data.error };
       }
       const detail = (data && (data.error || data.message)) || ('HTTP ' + res.status);
@@ -714,7 +938,6 @@
 
   let isBusy = false;
 
-  // Show a live countdown in the thinking bubble and resolve after `seconds`.
   function countdownForRetry(seconds, thinkingEl) {
     let remaining = seconds;
     const bubble = thinkingEl && thinkingEl.querySelector('.msg__bubble');
@@ -734,15 +957,13 @@
   }
 
   async function handleSend() {
-    if (isBusy) return; // ignore rapid/duplicate sends while a request is in flight
+    if (isBusy) return;
 
     const text = input.value.trim();
     if (!text) return;
 
     const provider = getActiveProvider();
 
-    // Backend mode + "Local (mock)" selected → ask for a provider instead of
-    // surfacing a confusing upstream error.
     if (USE_BACKEND && provider.builtin) {
       addMessage(
         'assistant',
@@ -757,15 +978,12 @@
     input.value = '';
     input.style.height = 'auto';
 
-    // Build the outgoing history, dropping any empty/blank messages so the
-    // backend never receives an empty (or only-whitespace) messages array.
     const history = messages
       .filter((m) => m && (m.role === 'user' || m.role === 'assistant') &&
         typeof m.content === 'string' && m.content.trim())
       .map(({ role, content }) => ({ role, content }));
 
     if (!history.length) {
-      // Defensive: nothing meaningful to send — restore the draft and bail.
       input.value = text;
       input.focus();
       return;
@@ -780,8 +998,6 @@
     const thinkingEl = showThinking();
     try {
       if (USE_BACKEND) {
-        // Auto-retry loop: on a provider rate limit, wait the cooldown and
-        // re-send automatically (up to 3 attempts).
         for (let attempt = 1; attempt <= 3; attempt++) {
           const result = await callBackend(provider, history);
           if (!result.rateLimited) {
@@ -812,7 +1028,6 @@
     addMessage('assistant', reply, provider.model, toolsUsed, mediaUsed, true);
 
     if (!ok) {
-      // Re-insert the draft on error so the user's message is never lost.
       input.value = text;
       input.style.height = 'auto';
       input.style.height = Math.min(input.scrollHeight, 160) + 'px';
@@ -875,7 +1090,6 @@
       recognition.start();
       setListening(true);
     } catch (err) {
-      // start() throws if a session is already active; fall back to idle state.
       setListening(false);
     }
   }
@@ -907,7 +1121,7 @@
       if (final) {
         input.value = final;
         input.dispatchEvent(new Event('input'));
-        input.focus(); // focus but never auto-send
+        input.focus();
       } else if (interim) {
         input.value = interim;
         input.dispatchEvent(new Event('input'));
@@ -957,22 +1171,45 @@
 
   const deviceSelect = $('#deviceSelect');
   let selectedDeviceId = localStorage.getItem('aiAgent.deviceId') || '';
+  let devicesCache = [];
 
   function populateDeviceSelect(devices) {
-    if (!deviceSelect) return;
-    const prev = selectedDeviceId;
-    deviceSelect.innerHTML = '';
-    const auto = document.createElement('option');
-    auto.value = '';
-    auto.textContent = '📱 Auto device';
-    deviceSelect.appendChild(auto);
-    devices.forEach((d) => {
-      const opt = document.createElement('option');
-      opt.value = d.device_id || d.id || '';
-      opt.textContent = (d.online ? '🟢 ' : '🔴 ') + (d.name || d.model || d.device_id || '?');
-      deviceSelect.appendChild(opt);
-    });
-    deviceSelect.value = prev;
+    devicesCache = devices || [];
+    if (deviceSelect) {
+      const prev = selectedDeviceId;
+      deviceSelect.innerHTML = '';
+      const auto = document.createElement('option');
+      auto.value = '';
+      auto.textContent = '📱 Auto device';
+      deviceSelect.appendChild(auto);
+      devicesCache.forEach((d) => {
+        const opt = document.createElement('option');
+        opt.value = d.device_id || d.id || '';
+        opt.textContent = (d.online ? '● ' : '○ ') + (d.name || d.model || d.device_id || '?');
+        deviceSelect.appendChild(opt);
+      });
+      deviceSelect.value = prev;
+    }
+    updateStatusDevice();
+  }
+
+  // Bottom status-bar dot + device label.
+  function updateStatusDevice() {
+    const dot = document.getElementById('statusDot');
+    const label = document.getElementById('statusDevice');
+    if (!dot) return;
+    const online = devicesCache.filter((d) => d.online);
+    const selected = selectedDeviceId
+      ? devicesCache.find((d) => (d.device_id || d.id) === selectedDeviceId)
+      : null;
+    const device = selected || online[0] || null;
+    if (device) {
+      dot.className = 'dot dot--online';
+      if (label) label.textContent = device.name || device.model || device.device_id || 'phone';
+    } else {
+      dot.className = 'dot dot--offline';
+      if (label) label.textContent = devicesCache.length ? 'phone offline' : 'no phone';
+    }
   }
 
   if (deviceSelect) {
@@ -980,6 +1217,8 @@
       selectedDeviceId = deviceSelect.value;
       if (selectedDeviceId) localStorage.setItem('aiAgent.deviceId', selectedDeviceId);
       else localStorage.removeItem('aiAgent.deviceId');
+      updateStatusDevice();
+      refreshStatusBar();
     });
   }
 
@@ -1020,10 +1259,368 @@
     });
   }
 
-  refreshMcpStatus();
-  renderMcpTools();
-  // Poll device status every 15s so the dot stays fresh.
-  setInterval(refreshMcpStatus, 15000);
+  // ---------------------------------------------------------------------------
+  // Control Center — DOM helpers (tiny, dependency-free)
+  // ---------------------------------------------------------------------------
+
+  function el(tag, className, text) {
+    const n = document.createElement(tag);
+    if (className) n.className = className;
+    if (text != null) n.textContent = text;
+    return n;
+  }
+
+  function makeInput(type, placeholder, value) {
+    const inp = el('input');
+    inp.type = type || 'text';
+    if (placeholder) inp.placeholder = placeholder;
+    if (value != null) inp.value = value;
+    return inp;
+  }
+
+  function makeField(labelText, inputEl) {
+    const f = el('label', 'field');
+    f.appendChild(el('span', 'field__label', labelText));
+    f.appendChild(inputEl);
+    return f;
+  }
+
+  function makeButton(label, onClick, className) {
+    const b = el('button', className || 'tc-btn', label);
+    b.type = 'button';
+    b.addEventListener('click', onClick);
+    return b;
+  }
+
+  // Segmented control: a row of mutually-exclusive buttons (e.g. durations).
+  function makeSeg(labels, initialIndex, onChange) {
+    const wrap = el('div', 'seg');
+    const btns = [];
+    let current = initialIndex || 0;
+    function update() {
+      btns.forEach((b, i) => b.classList.toggle('tc-btn--active', i === current));
+    }
+    labels.forEach((lbl, i) => {
+      const b = makeButton(lbl, () => {
+        current = i;
+        update();
+        if (onChange) onChange(labels[i]);
+      });
+      btns.push(b);
+      wrap.appendChild(b);
+    });
+    update();
+    return { wrap, get value() { return labels[current]; } };
+  }
+
+  function clamp(v, min, max) {
+    const n = parseFloat(v);
+    if (isNaN(n)) return NaN;
+    return Math.max(min, Math.min(max, n));
+  }
+
+  // UTF-8 → base64 (safe for non-Latin1 files PUT to the phone).
+  function utf8ToBase64(str) {
+    try {
+      const bytes = new TextEncoder().encode(String(str));
+      let bin = '';
+      bytes.forEach((b) => { bin += String.fromCharCode(b); });
+      return btoa(bin);
+    } catch (e) {
+      try { return btoa(String(str)); } catch (e2) { return ''; }
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Control Center — command execution + result rendering
+  // ---------------------------------------------------------------------------
+
+  const AUDIO_B64_RE = /^AUDIO_B64:/i;
+  const MEDIA_LINK_RE = /MEDIA_LINK:\s*(\S+)/i;
+  const URL_RE = /https?:\/\/[^\s"'<>]+/i;
+  const MAPS_RE = /(?:maps\.google\.com|google\.com\/maps|goo\.gl\/maps|maps\.app\.goo\.gl)/i;
+
+  let ccBusy = false;
+
+  async function postCommand(command) {
+    const res = await fetch(BACKEND_COMMAND_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Web-Key': agentWebKey() },
+      body: JSON.stringify({
+        command: command,
+        ...(selectedDeviceId ? { device_id: selectedDeviceId } : {}),
+      }),
+    });
+    let data = null;
+    try { data = await res.json(); } catch (e) { /* ignore */ }
+    if (!res.ok) {
+      const detail = (data && (data.error || data.message || data.result)) || ('HTTP ' + res.status);
+      throw new Error(detail);
+    }
+    return data;
+  }
+
+  // Non-throwing variant used by the status bar / aggregates.
+  async function safeCommand(command) {
+    try {
+      const data = await postCommand(command);
+      return (data && typeof data.result !== 'undefined') ? String(data.result) : '';
+    } catch (err) {
+      return null;
+    }
+  }
+
+  function renderMedia(resultEl, url, kind) {
+    const box = el('div', 'result-media');
+    if (kind === 'video') {
+      const v = el('video');
+      v.controls = true;
+      v.preload = 'metadata';
+      v.playsInline = true;
+      v.src = url;
+      box.appendChild(v);
+    } else {
+      const img = el('img');
+      img.alt = 'Result';
+      img.loading = 'lazy';
+      renderImageViaBlob(img, url);
+      box.appendChild(img);
+    }
+    const dl = el('a', 'result-dl', '⬇ Download');
+    dl.href = url;
+    dl.target = '_blank';
+    dl.rel = 'noopener noreferrer';
+    dl.download = '';
+    box.appendChild(dl);
+    resultEl.appendChild(box);
+  }
+
+  // Render a raw phone result. kind ∈ image | video | audio | link | auto.
+  function renderToolResult(resultEl, raw, kind) {
+    resultEl.innerHTML = '';
+    const text = String(raw == null ? '' : raw).replace(/\r\n/g, '\n').trim();
+    if (!text) return;
+
+    // 1) Audio clip (record_audio) → playable <audio> + download.
+    if (AUDIO_B64_RE.test(text)) {
+      const b64 = text.replace(AUDIO_B64_RE, '').replace(/\s+/g, '');
+      const dataUri = 'data:audio/wav;base64,' + b64;
+      const box = el('div', 'result-media');
+      const audio = el('audio');
+      audio.controls = true;
+      audio.src = dataUri;
+      const dl = el('a', 'result-dl', '⬇ Download WAV');
+      dl.href = dataUri;
+      dl.download = 'recording.wav';
+      box.appendChild(audio);
+      box.appendChild(dl);
+      resultEl.appendChild(box);
+      return;
+    }
+
+    // 2) Explicit media link (camera_link / screenshot_link / screen_record_link).
+    const ml = text.match(MEDIA_LINK_RE);
+    if (ml) {
+      renderMedia(resultEl, cleanUrl(ml[1]), kind === 'video' ? 'video' : 'image');
+      return;
+    }
+
+    // 3) Bare URL for a media tool.
+    const bare = text.match(URL_RE);
+    if (bare && (kind === 'image' || kind === 'video' || kind === 'media')) {
+      renderMedia(resultEl, cleanUrl(bare[0]), kind);
+      return;
+    }
+
+    // 4) Plain text (optionally + a Maps / generic link button).
+    resultEl.appendChild(el('pre', 'result-pre', text));
+    if (bare) {
+      const url = cleanUrl(bare[0]);
+      if (MAPS_RE.test(text)) {
+        const m = el('a', 'result-maps', '🗺 Open in Google Maps');
+        m.href = url;
+        m.target = '_blank';
+        m.rel = 'noopener noreferrer';
+        resultEl.appendChild(m);
+      } else if (kind === 'link') {
+        const a = el('a', 'result-dl', '🔗 Open link');
+        a.href = url;
+        a.target = '_blank';
+        a.rel = 'noopener noreferrer';
+        resultEl.appendChild(a);
+      }
+    }
+  }
+
+  async function runCommand(command, kind) {
+    if (ccBusy) return;
+    ccBusy = true;
+    toolResultEl.innerHTML = '';
+    const loader = el('div', 'result-loading');
+    loader.textContent = 'Running: ' + command;
+    toolResultEl.appendChild(loader);
+    try {
+      const data = await postCommand(command);
+      const raw = (data && typeof data.result !== 'undefined') ? data.result : '';
+      renderToolResult(toolResultEl, raw, kind || 'auto');
+    } catch (err) {
+      toolResultEl.innerHTML = '';
+      toolResultEl.appendChild(
+        el('pre', 'result-pre result-error', '⚠️ ' + (err && err.message ? err.message : 'Request failed'))
+      );
+    } finally {
+      ccBusy = false;
+    }
+  }
+
+  // Run several commands in sequence and aggregate their text into one card.
+  async function runMulti(list) {
+    if (ccBusy) return;
+    ccBusy = true;
+    toolResultEl.innerHTML = '';
+    const loader = el('div', 'result-loading');
+    loader.textContent = 'Running ' + list.length + ' commands…';
+    toolResultEl.appendChild(loader);
+    const parts = [];
+    for (let i = 0; i < list.length; i++) {
+      const it = list[i];
+      loader.textContent = 'Running: ' + it.cmd + ' (' + (i + 1) + '/' + list.length + ')';
+      const raw = await safeCommand(it.cmd);
+      parts.push('── ' + it.label + ' ──\n' + (raw == null ? '(request failed)' : raw));
+    }
+    toolResultEl.innerHTML = '';
+    toolResultEl.appendChild(el('pre', 'result-pre', parts.join('\n\n')));
+    ccBusy = false;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Control Center — tile rendering + open/close + tilt + particles + status bar
+  // ---------------------------------------------------------------------------
+
+  function openTool(tool) {
+    gridView.hidden = true;
+    toolView.hidden = false;
+    // Re-trigger the flip/zoom entry animation.
+    toolView.style.animation = 'none';
+    void toolView.offsetWidth;
+    toolView.style.animation = '';
+    toolTitle.textContent = tool.emoji + ' ' + tool.label;
+    toolControlsEl.innerHTML = '';
+    toolResultEl.innerHTML = '';
+    tool.build({
+      controls: toolControlsEl,
+      result: toolResultEl,
+      run: (command, kind) => runCommand(command, kind),
+      runMulti: (list) => runMulti(list),
+    });
+    if (ccMain) ccMain.scrollTop = 0;
+  }
+
+  function closeTool() {
+    toolView.hidden = true;
+    gridView.hidden = false;
+    gridView.style.animation = 'none';
+    void gridView.offsetWidth;
+    gridView.style.animation = '';
+  }
+
+  if (backBtn) backBtn.addEventListener('click', closeTool);
+
+  // 3D tilt — rotate tiles toward the cursor (desktop only).
+  function attachTilt(tile) {
+    if (window.matchMedia && window.matchMedia('(hover: none)').matches) return; // mobile = float
+    tile.addEventListener('mousemove', (e) => {
+      const r = tile.getBoundingClientRect();
+      const px = (e.clientX - r.left) / r.width;
+      const py = (e.clientY - r.top) / r.height;
+      tile.style.setProperty('--rx', ((0.5 - py) * 22).toFixed(2) + 'deg');
+      tile.style.setProperty('--ry', ((px - 0.5) * 22).toFixed(2) + 'deg');
+    });
+    tile.addEventListener('mouseleave', () => {
+      tile.style.setProperty('--rx', '0deg');
+      tile.style.setProperty('--ry', '0deg');
+    });
+  }
+
+  function renderGrid() {
+    tileGrid.innerHTML = '';
+    TOOLS.forEach((tool, i) => {
+      const tile = el('button', 'tile');
+      tile.type = 'button';
+      tile.style.setProperty('--tile-accent', tool.color);
+      tile.style.animationDelay = (i * 30) + 'ms';
+      tile.appendChild(el('span', 'tile__emoji', tool.emoji));
+      tile.appendChild(el('span', 'tile__label', tool.label));
+      tile.appendChild(el('span', 'tile__sub', tool.sub));
+      tile.addEventListener('click', () => openTool(tool));
+      attachTilt(tile);
+      tileGrid.appendChild(tile);
+    });
+  }
+
+  // Lightweight particle field behind the UI (skipped for reduced-motion).
+  function initParticles() {
+    const canvas = document.getElementById('particles');
+    if (!canvas || prefersReducedMotion()) return;
+    const ctx = canvas.getContext('2d');
+    let w, h, dots;
+    function resize() {
+      w = canvas.width = window.innerWidth;
+      h = canvas.height = window.innerHeight;
+    }
+    resize();
+    window.addEventListener('resize', resize);
+    const N = Math.min(50, Math.floor(window.innerWidth / 24));
+    dots = Array.from({ length: N }, () => ({
+      x: Math.random() * w,
+      y: Math.random() * h,
+      r: Math.random() * 1.8 + 0.6,
+      vx: (Math.random() - 0.5) * 0.22,
+      vy: (Math.random() - 0.5) * 0.22,
+      a: Math.random() * 0.5 + 0.15,
+      hue: Math.random() < 0.5 ? 215 : 262,
+    }));
+    function step() {
+      ctx.clearRect(0, 0, w, h);
+      dots.forEach((d) => {
+        d.x += d.vx; d.y += d.vy;
+        if (d.x < 0) d.x = w; else if (d.x > w) d.x = 0;
+        if (d.y < 0) d.y = h; else if (d.y > h) d.y = 0;
+        ctx.beginPath();
+        ctx.arc(d.x, d.y, d.r, 0, Math.PI * 2);
+        ctx.fillStyle = 'hsla(' + d.hue + ', 90%, 70%, ' + d.a + ')';
+        ctx.shadowBlur = 6;
+        ctx.shadowColor = 'hsla(' + d.hue + ', 90%, 60%, 0.6)';
+        ctx.fill();
+      });
+      requestAnimationFrame(step);
+    }
+    step();
+  }
+
+  function compact(text, max) {
+    const s = String(text || '').replace(/\s+/g, ' ').trim();
+    return s.length > max ? s.slice(0, max - 1) + '…' : s;
+  }
+  function summarizeBattery(text) {
+    const m = String(text || '').match(/(\d{1,3})\s*%/);
+    return m ? m[1] + '%' : compact(text, 12);
+  }
+
+  // Bottom status bar: battery / storage / network quick readout.
+  async function refreshStatusBar() {
+    const bEl = document.getElementById('statusBattery');
+    const sEl = document.getElementById('statusStorage');
+    const nEl = document.getElementById('statusNetwork');
+    const [battery, storage, network] = await Promise.all([
+      safeCommand('battery'),
+      safeCommand('storage'),
+      safeCommand('network'),
+    ]);
+    if (bEl) bEl.textContent = battery ? ('🔋 ' + summarizeBattery(battery)) : '🔋 —';
+    if (sEl) sEl.textContent = storage ? ('💾 ' + compact(storage, 26)) : '💾 —';
+    if (nEl) nEl.textContent = network ? ('📶 ' + compact(network, 22)) : '📶 —';
+  }
 
   // ---------------------------------------------------------------------------
   // PWA install prompt
@@ -1073,7 +1670,7 @@
       themeToggle.title = isLight ? 'Switch to dark theme' : 'Switch to light theme';
       themeToggle.setAttribute('aria-label', themeToggle.title);
     }
-    if (themeColorMeta) themeColorMeta.setAttribute('content', isLight ? '#f4f6fa' : '#0a0d12');
+    if (themeColorMeta) themeColorMeta.setAttribute('content', isLight ? '#f4f6fa' : '#070a12');
   }
 
   function initTheme() {
@@ -1118,7 +1715,7 @@
   function shakeGate() {
     if (!gateCard) return;
     gateCard.classList.remove('gate__card--shake');
-    void gateCard.offsetWidth; // force reflow so the animation can restart
+    void gateCard.offsetWidth;
     gateCard.classList.add('gate__card--shake');
   }
 
@@ -1147,7 +1744,6 @@
       }
     });
 
-    // Clear the error as soon as the user starts typing again.
     if (gatePassword) {
       gatePassword.addEventListener('input', () => {
         if (gateError) gateError.classList.remove('is-visible');
@@ -1155,7 +1751,7 @@
     }
   }
 
-  // Lock / Logout affordance in the sidebar footer.
+  // Lock / Logout affordance in the settings footer.
   const lockApp = $('#lockApp');
   if (lockApp) {
     lockApp.addEventListener('click', () => {
@@ -1165,6 +1761,30 @@
   }
 
   // ---------------------------------------------------------------------------
+  // Chat panel open/close
+  // ---------------------------------------------------------------------------
+
+  function isMobile() {
+    return !!(window.matchMedia && window.matchMedia('(max-width: 760px)').matches);
+  }
+
+  function setChatOpen(open) {
+    chatPanel.classList.toggle('chat-panel--open', open);
+    chatScrim.classList.toggle('is-visible', open && isMobile());
+    if (open) {
+      input.style.height = 'auto';
+      input.style.height = Math.min(input.scrollHeight, 160) + 'px';
+      setTimeout(() => input.focus(), 320);
+    }
+  }
+
+  if (chatToggle) chatToggle.addEventListener('click', () => {
+    setChatOpen(!chatPanel.classList.contains('chat-panel--open'));
+  });
+  if (closeChat) closeChat.addEventListener('click', () => setChatOpen(false));
+  if (chatScrim) chatScrim.addEventListener('click', () => setChatOpen(false));
+
+  // ---------------------------------------------------------------------------
   // Boot
   // ---------------------------------------------------------------------------
 
@@ -1172,10 +1792,17 @@
   initTheme();
   renderProviderSelect();
   renderMessages();
-  input.focus();
   initVoiceInput();
 
-  const sidebar = $('#sidebar');
-  $('#openSidebar').addEventListener('click', () => sidebar.classList.add('sidebar--open'));
-  $('#closeSidebar').addEventListener('click', () => sidebar.classList.remove('sidebar--open'));
+  renderGrid();
+  initParticles();
+
+  refreshMcpStatus();
+  renderMcpTools();
+  // Poll device status every 15s so the dot stays fresh.
+  setInterval(refreshMcpStatus, 15000);
+
+  // Status bar reads (battery/storage/network) — initial + every 30s.
+  refreshStatusBar();
+  setInterval(refreshStatusBar, 30000);
 })();
