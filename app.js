@@ -21,9 +21,11 @@
   const BACKEND_BASE = 'https://ai-agent-backend.ai-agent-backend.workers.dev';
   const BACKEND_CHAT_URL = BACKEND_BASE + '/api/chat';
   const BACKEND_DEVICES_URL = BACKEND_BASE + '/api/devices';
-  // Direct raw-relay command endpoint (no backend changes needed — the Worker
-  // already exposes POST /api/command → { ok, result }).
+  // Direct raw-relay command endpoint. New contract: POST /api/command returns
+  // { ok, command_id } immediately, then GET /api/result?id=<command_id> polls
+  // until { ok, result } is ready (or { ok: false, pending: true } meanwhile).
   const BACKEND_COMMAND_URL = BACKEND_BASE + '/api/command';
+  const BACKEND_RESULT_URL = BACKEND_BASE + '/api/result';
 
   const LOCAL_PROVIDER = {
     id: 'local',
@@ -292,7 +294,8 @@
 
   function saveProviders() {
     const custom = providers.filter((p) => !p.builtin);
-    localStorage.setItem(STORAGE_KEYS.providers, JSON.stringify(custom));
+    try { localStorage.setItem(STORAGE_KEYS.providers, JSON.stringify(custom)); }
+    catch (err) { /* quota exceeded / storage blocked — swallow */ }
   }
 
   function loadMessages() {
@@ -304,7 +307,20 @@
   }
 
   function saveMessages(messages) {
-    localStorage.setItem(STORAGE_KEYS.messages, JSON.stringify(messages));
+    try {
+      // Cap to the most recent ~200 messages so localStorage never overflows.
+      const capped = Array.isArray(messages) ? messages.slice(-200) : [];
+      localStorage.setItem(STORAGE_KEYS.messages, JSON.stringify(capped));
+    } catch (err) { /* quota exceeded / storage blocked — swallow */ }
+  }
+
+  // Non-throwing localStorage helpers (storage can be blocked / full in some
+  // browsers or private windows).
+  function trySetItem(key, value) {
+    try { localStorage.setItem(key, value); } catch (err) { /* ignore */ }
+  }
+  function tryRemoveItem(key) {
+    try { localStorage.removeItem(key); } catch (err) { /* ignore */ }
   }
 
   // --------------------------------------------------------------------------
@@ -332,10 +348,16 @@
   }
 
   function pushHistory(tool, command, resultText) {
+    let cmdStr = String(command || '');
+    const t = tool || toolFromCommand(cmdStr);
+    // Don't persist file_put base64 payloads in history (large / sensitive).
+    if (t === 'file_put') {
+      cmdStr = cmdStr.replace(/^(file_put\s+\S+\s+)\S+$/i, '$1(data)');
+    }
     commandHistory.unshift({
       ts: Date.now(),
-      tool: tool || toolFromCommand(command),
-      command: String(command || ''),
+      tool: t,
+      command: cmdStr,
       result_snippet: String(resultText || '').slice(0, 160),
     });
     if (commandHistory.length > 100) commandHistory.length = 100;
@@ -535,7 +557,7 @@
 
   function startEditProvider(id) {
     activeId = id;
-    localStorage.setItem(STORAGE_KEYS.activeId, activeId);
+    trySetItem(STORAGE_KEYS.activeId, activeId);
     renderProviderSelect();
     setFormMode('edit');
   }
@@ -545,7 +567,7 @@
     if (!p || p.builtin) return;
     providers = providers.filter((x) => x.id !== id);
     if (activeId === id) activeId = 'local';
-    localStorage.setItem(STORAGE_KEYS.activeId, activeId);
+    trySetItem(STORAGE_KEYS.activeId, activeId);
     if (editingId === id) setFormMode('add');
     saveProviders();
     renderProviderSelect();
@@ -553,7 +575,7 @@
 
   providerSelect.addEventListener('change', () => {
     activeId = providerSelect.value;
-    localStorage.setItem(STORAGE_KEYS.activeId, activeId);
+    trySetItem(STORAGE_KEYS.activeId, activeId);
     syncHeader();
   });
 
@@ -578,7 +600,7 @@
       providers.push({ id, name, baseUrl, apiKey, model, builtin: false });
       activeId = id;
     }
-    localStorage.setItem(STORAGE_KEYS.activeId, activeId);
+    trySetItem(STORAGE_KEYS.activeId, activeId);
     saveProviders();
     providerForm.reset();
     providerFormWrap.open = false;
@@ -690,6 +712,19 @@
     return url.replace(/[.,;:!?'")\]}>]+$/, '');
   }
 
+  // Only allow http(s) media / download URLs. This blocks `javascript:`,
+  // `data:`, `blob:` etc. from ever being assigned to <img>/<video>/<a> src/href
+  // (media links and download buttons are built from relay/backend strings that
+  // should never be trusted verbatim). Kept to the http(s) scheme gate rather
+  // than a strict host allowlist so arbitrary relay hosts / GitHub / Telegram
+  // media links keep working.
+  function safeMediaUrl(url) {
+    const u = String(url || '').trim();
+    if (!u) return '';
+    if (!/^https?:\/\//i.test(u)) return '';
+    return u;
+  }
+
   // Combine explicit data.media + bare media URLs from the reply text (deduped),
   // so media renders even when the backend omits the `media` field.
   function buildMediaList(m) {
@@ -725,6 +760,7 @@
   function createMediaItem(item) {
     const box = document.createElement('div');
     box.className = 'msg__media-item';
+    const url = safeMediaUrl(item.url);
 
     let mediaEl;
     if (item.type === 'video') {
@@ -732,21 +768,21 @@
       mediaEl.controls = true;
       mediaEl.preload = 'metadata';
       mediaEl.playsInline = true;
-      mediaEl.src = item.url;
+      mediaEl.src = url;
     } else {
       mediaEl = document.createElement('img');
       mediaEl.loading = 'lazy';
       mediaEl.alt = 'Media';
-      mediaEl.src = item.url;
+      mediaEl.src = url;
       // Telegram serves files as application/octet-stream; re-fetch as a Blob
       // with a sniffed mime so the <img> renders inline instead of downloading.
-      renderImageViaBlob(mediaEl, item.url);
+      renderImageViaBlob(mediaEl, url);
     }
     mediaEl.className = 'msg__media-el';
 
     const dl = document.createElement('a');
     dl.className = 'msg__media-dl';
-    dl.href = item.url;
+    dl.href = url;
     dl.target = '_blank';
     dl.rel = 'noopener noreferrer';
     dl.download = '';
@@ -760,6 +796,8 @@
   // Fetch an image URL, sniff its real mime from the bytes, and set the <img>
   // src to a Blob object URL so an octet-stream response still renders inline.
   function renderImageViaBlob(img, url) {
+    url = safeMediaUrl(url);
+    if (!url) return;
     fetch(url)
       .then((resp) => {
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
@@ -773,7 +811,10 @@
         else if (bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46) mime = 'image/gif';
         else if (bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46) mime = 'image/webp';
         const blob = new Blob([buf], { type: mime });
-        img.src = URL.createObjectURL(blob);
+        const next = URL.createObjectURL(blob);
+        if (img._blobUrl) { try { URL.revokeObjectURL(img._blobUrl); } catch (e) { /* ignore */ } }
+        img._blobUrl = next;
+        img.src = next;
       })
       .catch(() => {
         // Fall back to the direct URL (e.g. if the fetch is blocked).
@@ -949,7 +990,7 @@
     const d = String(detail || '').toLowerCase();
     if (status === 401 || status === 403) return 'auth';
     if (/api\s?key|credential|unauthor|authentication|\bauth\b/.test(d)) return 'auth';
-    if (/\bmodel\b/.test(d)) return 'model';
+    if (/\b(?:invalid|unknown|unsupported|not\s+found|does\s+not\s+exist|no\s+such)\s+(?:model|model\s+id)\b|\bmodel\b\s+(?:invalid|unknown|unsupported|not\s+found|does\s+not\s+exist)/.test(d)) return 'model';
     if (status >= 500) return 'backend';
     if (status >= 400) return 'provider';
     return 'unknown';
@@ -1096,7 +1137,7 @@
             reply = '⏳ Rate limit innum irukku — konjam neram wait pannu, appuram try pannu.';
             break;
           }
-          await countdownForRetry(Math.min(result.retryAfter || 60, 120), thinkingEl);
+          await countdownForRetry(Math.min(result.retryAfter || 60, 300), thinkingEl);
         }
       } else {
         await new Promise((r) => setTimeout(r, 350));
@@ -1300,8 +1341,8 @@
   if (deviceSelect) {
     deviceSelect.addEventListener('change', () => {
       selectedDeviceId = deviceSelect.value;
-      if (selectedDeviceId) localStorage.setItem('aiAgent.deviceId', selectedDeviceId);
-      else localStorage.removeItem('aiAgent.deviceId');
+      if (selectedDeviceId) trySetItem('aiAgent.deviceId', selectedDeviceId);
+      else tryRemoveItem('aiAgent.deviceId');
       updateStatusDevice();
       refreshStatusBar();
     });
@@ -1424,6 +1465,16 @@
 
   let ccBusy = false;
 
+  // Command execution is two-phase with the new backend contract:
+  //   POST /api/command  -> { ok, command_id } immediately (or { ok, result } if
+  //                          it was already done),
+  //   GET  /api/result?id=<command_id> -> { ok, result } when ready, or
+  //                          { ok:false, pending:true } meanwhile.
+  // We poll every ~2s for up to ~70s, and fall back to a directly embedded
+  // `result` field when present (backward-compatible with the old contract).
+  const COMMAND_TIMEOUT_MS = 70000;
+  const COMMAND_POLL_MS = 2000;
+
   // `deviceId` is an optional per-call override for multi-device control; when
   // omitted it falls back to `selectedDeviceId` (the header device selector).
   // `opts.log === false` suppresses command-history logging (used by background
@@ -1433,6 +1484,9 @@
     const log = !opts || opts.log !== false;
     let data = null;
     let errorDetail = '';
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), COMMAND_TIMEOUT_MS);
     try {
       const res = await fetch(BACKEND_COMMAND_URL, {
         method: 'POST',
@@ -1441,14 +1495,50 @@
           command: command,
           ...(targetDevice ? { device_id: targetDevice } : {}),
         }),
+        signal: controller.signal,
       });
-      try { data = await res.json(); } catch (e) { /* ignore */ }
+      try { data = await res.json(); } catch (e) { data = null; }
       if (!res.ok) {
         errorDetail = (data && (data.error || data.message || data.result)) || ('HTTP ' + res.status);
         throw new Error(errorDetail);
       }
+
+      // Backward-compatible: the response already carries the final result.
+      if (data && typeof data.result !== 'undefined') return data;
+
+      // New contract: poll /api/result until the command is ready.
+      const commandId = data && (data.command_id || data.result_id || data.id);
+      if (commandId) {
+        const pollUrl = BACKEND_RESULT_URL + '?id=' + encodeURIComponent(commandId);
+        for (;;) {
+          await new Promise((r) => setTimeout(r, COMMAND_POLL_MS));
+          let pres = null;
+          try {
+            const pollRes = await fetch(pollUrl, {
+              headers: { 'X-Web-Key': agentWebKey() },
+              signal: controller.signal,
+            });
+            try { pres = await pollRes.json(); } catch (e) { pres = null; }
+          } catch (err) {
+            if (err && err.name === 'AbortError') throw err;
+            continue; // transient network error — retry next tick
+          }
+          if (pres && pres.ok && typeof pres.result !== 'undefined') {
+            data = { result: pres.result };
+            return data;
+          }
+          // { ok:false, pending:true } → keep polling until the timeout fires.
+        }
+      }
       return data;
+    } catch (err) {
+      if (err && err.name === 'AbortError') {
+        errorDetail = 'Timed out after 70s — the phone may be busy or offline.';
+        throw new Error(errorDetail);
+      }
+      throw err;
     } finally {
+      clearTimeout(timeoutId);
       if (log) {
         const snippet = errorDetail || (data && typeof data.result !== 'undefined' ? data.result : '');
         pushHistory(toolFromCommand(command), command, snippet);
@@ -1467,6 +1557,8 @@
   }
 
   function renderMedia(resultEl, url, kind, opts) {
+    url = safeMediaUrl(url);
+    if (!url) return;
     if (!(opts && opts.noGallery)) addToGallery(kind === 'video' ? 'video' : 'image', url);
     const box = el('div', 'result-media');
     if (kind === 'video') {
@@ -1563,10 +1655,10 @@
       const raw = (data && typeof data.result !== 'undefined') ? data.result : '';
       renderToolResult(out, raw, kind || 'auto');
     } catch (err) {
+      const msg = err && err.message ? err.message : 'Request failed';
       out.innerHTML = '';
-      out.appendChild(
-        el('pre', 'result-pre result-error', '⚠️ ' + (err && err.message ? err.message : 'Request failed'))
-      );
+      out.appendChild(el('pre', 'result-pre result-error', '⚠️ ' + msg));
+      toast('⚠️ ' + msg);
     } finally {
       ccBusy = false;
     }
@@ -1576,20 +1668,23 @@
   async function runMulti(list) {
     if (ccBusy) return;
     ccBusy = true;
-    toolResultEl.innerHTML = '';
-    const loader = el('div', 'result-loading');
-    loader.textContent = 'Running ' + list.length + ' commands…';
-    toolResultEl.appendChild(loader);
-    const parts = [];
-    for (let i = 0; i < list.length; i++) {
-      const it = list[i];
-      loader.textContent = 'Running: ' + it.cmd + ' (' + (i + 1) + '/' + list.length + ')';
-      const raw = await safeCommand(it.cmd);
-      parts.push('── ' + it.label + ' ──\n' + (raw == null ? '(request failed)' : raw));
+    try {
+      toolResultEl.innerHTML = '';
+      const loader = el('div', 'result-loading');
+      loader.textContent = 'Running ' + list.length + ' commands…';
+      toolResultEl.appendChild(loader);
+      const parts = [];
+      for (let i = 0; i < list.length; i++) {
+        const it = list[i];
+        loader.textContent = 'Running: ' + it.cmd + ' (' + (i + 1) + '/' + list.length + ')';
+        const raw = await safeCommand(it.cmd);
+        parts.push('── ' + it.label + ' ──\n' + (raw == null ? '(request failed)' : raw));
+      }
+      toolResultEl.innerHTML = '';
+      toolResultEl.appendChild(el('pre', 'result-pre', parts.join('\n\n')));
+    } finally {
+      ccBusy = false;
     }
-    toolResultEl.innerHTML = '';
-    toolResultEl.appendChild(el('pre', 'result-pre', parts.join('\n\n')));
-    ccBusy = false;
   }
 
   // ---------------------------------------------------------------------------
@@ -1724,15 +1819,40 @@
     return m ? m[1] + '%' : compact(text, 12);
   }
 
+  // Resolve the device id to actually send commands to: the selected device if
+  // it's online, otherwise the first online device. Returns '' when no phone is
+  // online (callers then skip the relay calls entirely rather than queueing
+  // commands for an offline device).
+  async function resolveOnlineTargetId() {
+    let devices = devicesCache;
+    if (!devices || !devices.length) {
+      try { devices = await fetchDevices(); populateDeviceSelect(devices); } catch (err) { devices = devicesCache || []; }
+    }
+    const selected = selectedDeviceId
+      ? devices.find((d) => ((d.device_id || d.id) === selectedDeviceId) && d.online)
+      : null;
+    const firstOnline = devices.find((d) => d.online);
+    const d = selected || firstOnline;
+    return d ? (d.device_id || d.id || '') : '';
+  }
+
   // Bottom status bar: battery / storage / network quick readout.
   async function refreshStatusBar() {
     const bEl = document.getElementById('statusBattery');
     const sEl = document.getElementById('statusStorage');
     const nEl = document.getElementById('statusNetwork');
+    const id = await resolveOnlineTargetId();
+    if (!id) {
+      // No phone is online — skip the relay calls (they would just queue up).
+      if (bEl) bEl.textContent = '🔋 —';
+      if (sEl) sEl.textContent = '💾 —';
+      if (nEl) nEl.textContent = '📶 —';
+      return;
+    }
     const [battery, storage, network] = await Promise.all([
-      safeCommand('battery', undefined, { log: false }),
-      safeCommand('storage', undefined, { log: false }),
-      safeCommand('network', undefined, { log: false }),
+      safeCommand('battery', id, { log: false }),
+      safeCommand('storage', id, { log: false }),
+      safeCommand('network', id, { log: false }),
     ]);
     if (bEl) bEl.textContent = battery ? ('🔋 ' + summarizeBattery(battery)) : '🔋 —';
     if (sEl) sEl.textContent = storage ? ('💾 ' + compact(storage, 26)) : '💾 —';
@@ -1836,14 +1956,14 @@
       v.controls = true;
       v.preload = 'metadata';
       v.playsInline = true;
-      v.src = g.url;
+      v.src = safeMediaUrl(g.url);
       card.appendChild(v);
     } else if (g.type === 'audio') {
       const row = el('div', 'gallery__audio');
       row.appendChild(el('span', 'gallery__audio-icon', '🎵'));
       const a = el('audio');
       a.controls = true;
-      a.src = g.url;
+      a.src = g.url; // audio may be a data: URI (recorded WAV) — intentionally allowed
       row.appendChild(a);
       card.appendChild(row);
     } else {
@@ -2176,16 +2296,20 @@
     // Live screen text: battery + deviceinfo, refreshed at most every ~5s.
     const refresh = async () => {
       if (phone3d !== state) return;
+      const id = await resolveOnlineTargetId();
+      if (phone3d !== state) return;
+      if (!id) {
+        drawScreenTexture(state, '—', '—');
+        return;
+      }
       const [battery, info] = await Promise.all([
-        safeCommand('battery', undefined, { log: false }),
-        safeCommand('deviceinfo', undefined, { log: false }),
+        safeCommand('battery', id, { log: false }),
+        safeCommand('deviceinfo', id, { log: false }),
       ]);
       if (phone3d !== state) return;
       let name = '';
-      const anyOnline = (selectedDeviceId
-        ? devicesCache.find((d) => (d.device_id || d.id) === selectedDeviceId)
-        : null) || devicesCache.find((d) => d.online);
-      if (anyOnline) name = anyOnline.name || anyOnline.model || anyOnline.device_id || '';
+      const dev = devicesCache.find((d) => ((d.device_id || d.id) === id) && d.online);
+      if (dev) name = dev.name || dev.model || dev.device_id || '';
       if (!name && info) name = compact(info, 22);
       drawScreenTexture(state, name || '—', battery ? summarizeBattery(battery) : '—');
     };
@@ -2267,18 +2391,78 @@
   // ---------------------------------------------------------------------------
   const SIGNAL_WS_BASE = 'wss://gokul-agent-server.onrender.com/signal';
   const LIVE_STUN = 'stun:stun.l.google.com:19302';
+  // Public TURN relay (openrelay.metered.ca) so peers behind symmetric NAT can
+  // still connect when a direct host/STUN candidate can't be negotiated.
+  const LIVE_TURN = {
+    urls: [
+      'turn:openrelay.metered.ca:80',
+      'turn:openrelay.metered.ca:443',
+      'turn:openrelay.metered.ca:443?transport=tcp',
+    ],
+    username: 'openrelayproject',
+    credential: 'openrelayproject',
+  };
 
-  // Active session: { ws, pc, video, timer, gotOffer } or null.
+  // Active session: { ws, pc, video, timer, negTimer, gotOffer, deviceId, mode } or null.
   let liveStream = null;
+  // Start-lock so a double-tap on Start can't orphan a half-open WebRTC session.
+  let liveBusy = false;
 
   function liveCleanup() {
     const s = liveStream;
     liveStream = null;
     if (!s) return;
+    try { if (s.negTimer) clearTimeout(s.negTimer); } catch (err) { /* ignore */ }
     try { if (s.timer) clearInterval(s.timer); } catch (err) { /* ignore */ }
     try { if (s.ws) { s.ws.send(JSON.stringify({ type: 'stop' })); s.ws.close(1000, 'stop'); } } catch (err) { /* ignore */ }
     try { if (s.pc) s.pc.close(); } catch (err) { /* ignore */ }
     try { if (s.video) s.video.srcObject = null; } catch (err) { /* ignore */ }
+    // Also tell the relay (command channel) to stop the phone-side live source.
+    try {
+      const stopCmd = s.mode === 'audio' ? 'live_audio stop' : 'live_camera stop';
+      safeCommand(stopCmd, s.deviceId, { log: false });
+    } catch (err) { /* ignore */ }
+  }
+
+  // Wire a remote MediaStream into the <video>, honoring the autoplay policy:
+  // keep audio muted until playback actually starts, then unmute; if playback is
+  // blocked, surface a "tap to unmute" affordance instead of claiming streaming.
+  function setLiveStreamPlaying(video, remoteStream, status, isVideo, s) {
+    if (video.srcObject !== remoteStream) video.srcObject = remoteStream;
+    const attempt = video.play();
+    if (attempt && typeof attempt.catch === 'function') {
+      attempt.then(() => {
+        if (liveStream !== s) return;
+        if (!isVideo) { try { video.muted = false; } catch (err) { /* ignore */ } }
+        status.textContent = isVideo ? '🎥 Streaming live (video + mic)…' : '🎙️ Streaming live audio…';
+      }).catch(() => {
+        if (liveStream !== s) return;
+        if (isVideo) {
+          status.textContent = '🎥 Streaming live (video + mic)…';
+        } else {
+          status.textContent = '🔇 Tap to unmute';
+          enableTapToUnmute(video, status);
+        }
+      });
+    } else {
+      status.textContent = isVideo ? '🎥 Streaming live (video + mic)…' : '🎙️ Streaming live audio…';
+    }
+  }
+
+  function enableTapToUnmute(video, status) {
+    if (!status || status._unmuteTap) return;
+    status._unmuteTap = true;
+    status.style.cursor = 'pointer';
+    status.title = 'Tap to unmute';
+    status.addEventListener('click', () => {
+      try {
+        video.muted = false;
+        const p = video.play();
+        if (p && typeof p.catch === 'function') p.catch(() => { /* ignore */ });
+        status.textContent = '🎙️ Streaming live audio…';
+        status.style.cursor = '';
+      } catch (err) { /* ignore */ }
+    });
   }
 
   // Build the Live Camera / Live Audio tile view.
@@ -2289,7 +2473,7 @@
     const status = el('div', 'hint', 'Ready — Start to stream live.');
 
     const startBtn = makeButton(isVideo ? '▶ Start camera' : '▶ Start mic',
-      () => startLive(mode, video, status), 'tc-btn tc-btn--primary');
+      () => startLive(mode, video, status, startBtn), 'tc-btn tc-btn--primary');
     const stopBtn = makeButton('⏹ Stop', () => {
       liveCleanup();
       status.textContent = 'Stopped.';
@@ -2299,7 +2483,7 @@
     btnRow.appendChild(stopBtn);
 
     const video = el('video', 'live__video');
-    video.muted = isVideo;         // camera muted (no echo loop); audio audible
+    video.muted = true;            // start muted to pass autoplay; unmute on play success
     video.autoplay = true;
     video.playsInline = true;
     video.setAttribute('playsinline', '');
@@ -2315,110 +2499,140 @@
     scope.result.appendChild(box);
   }
 
-  async function startLive(mode, video, status) {
-    const isVideo = mode === 'camera';
-
-    if (!window.RTCPeerConnection) {
-      status.textContent = '⚠️ This browser does not support live streaming (RTCPeerConnection missing).';
-      return;
-    }
-
-    liveCleanup(); // drop any prior session
-
-    // Resolve the target phone (selected device, else first online device).
-    let devices = devicesCache;
-    if (!devices || !devices.length) {
-      try { devices = await fetchDevices(); populateDeviceSelect(devices); } catch (err) { devices = devicesCache || []; }
-    }
-    const id = selectedDeviceId ||
-      ((devices || []).find((d) => d.online) || {}).device_id ||
-      ((devices || [])[0] || {}).device_id || '';
-    if (!id) {
-      status.textContent = 'No phone registered — wait for a phone to come online, then Start again.';
-      return;
-    }
-
-    const pc = new RTCPeerConnection({ iceServers: [{ urls: LIVE_STUN }] });
-    const remoteStream = new MediaStream();
-    const s = { ws: null, pc, video, timer: null, gotOffer: false, deviceId: id };
-    liveStream = s;
-
-    pc.ontrack = (ev) => {
-      if (video.srcObject !== remoteStream) {
-        video.srcObject = remoteStream;
-        video.play().catch(() => { /* autoplay is on the user gesture for audio */ });
-      }
-      remoteStream.addTrack(ev.track);
-      status.textContent = isVideo ? '🎥 Streaming live (video + mic)…' : '🎙️ Streaming live audio…';
-    };
-
-    pc.onicecandidate = (ev) => {
-      if (!ev.candidate || !s.ws) return;
-      try {
-        s.ws.send(JSON.stringify({
-          type: 'ice',
-          candidate: {
-            candidate: ev.candidate.candidate,
-            sdpMid: ev.candidate.sdpMid,
-            sdpMLineIndex: ev.candidate.sdpMLineIndex,
-          },
-        }));
-      } catch (err) { /* ignore */ }
-    };
-
-    const wsUrl = SIGNAL_WS_BASE + '?room=' + encodeURIComponent(id) + '&role=browser';
-    status.textContent = 'Connecting to ' + id + '…';
-
-    let ws;
+  async function startLive(mode, video, status, startBtn) {
+    if (liveBusy) return;
+    liveBusy = true;
+    if (startBtn) startBtn.disabled = true;
     try {
-      ws = new WebSocket(wsUrl);
-    } catch (err) {
-      status.textContent = '⚠️ WebSocket not supported / blocked.';
-      liveCleanup();
-      return;
-    }
-    s.ws = ws;
+      const isVideo = mode === 'camera';
 
-    ws.onopen = () => {
-      // Announce ourselves; re-request the offer until the phone replies (the
-      // phone may have finished its setup before we joined the room).
-      const ping = () => {
-        if (s.gotOffer || liveStream !== s) return;
-        try { ws.send(JSON.stringify({ type: 'start' })); } catch (err) { /* ignore */ }
+      if (!window.RTCPeerConnection) {
+        status.textContent = '⚠️ This browser does not support live streaming (RTCPeerConnection missing).';
+        return;
+      }
+
+      liveCleanup(); // drop any prior session
+
+      // Resolve the target phone (selected device, else first online device).
+      let devices = devicesCache;
+      if (!devices || !devices.length) {
+        try { devices = await fetchDevices(); populateDeviceSelect(devices); } catch (err) { devices = devicesCache || []; }
+      }
+      const id = selectedDeviceId ||
+        ((devices || []).find((d) => d.online) || {}).device_id ||
+        ((devices || [])[0] || {}).device_id || '';
+      if (!id) {
+        status.textContent = 'No phone registered — wait for a phone to come online, then Start again.';
+        return;
+      }
+
+      const pc = new RTCPeerConnection({ iceServers: [{ urls: LIVE_STUN }, LIVE_TURN] });
+      const remoteStream = new MediaStream();
+      const s = { ws: null, pc, video, timer: null, negTimer: null, gotOffer: false, deviceId: id, mode: isVideo ? 'camera' : 'audio' };
+      liveStream = s;
+
+      pc.ontrack = (ev) => {
+        remoteStream.addTrack(ev.track);
+        setLiveStreamPlaying(video, remoteStream, status, isVideo, s);
       };
-      ping();
-      s.timer = setInterval(ping, 2500);
-    };
-
-    ws.onmessage = async (evt) => {
-      let m;
-      try { m = JSON.parse(evt.data); } catch (err) { return; }
-      const type = m && m.type;
-      if (type === 'offer' && m.sdp && m.sdp.sdp) {
-        if (s.gotOffer) return; // answer only once
-        s.gotOffer = true;
-        try {
-          await pc.setRemoteDescription(new RTCSessionDescription(m.sdp));
-          const answer = await pc.createAnswer();
-          await pc.setLocalDescription(answer);
-          ws.send(JSON.stringify({ type: 'answer', sdp: { type: 'answer', sdp: answer.sdp } }));
-          status.textContent = 'Negotiating… sending answer';
-        } catch (err) {
-          status.textContent = '⚠️ Negotiation failed: ' + (err && err.message ? err.message : err);
+      // Safari (< 16) exposes incoming streams via `addstream` instead of `track`.
+      pc.onaddstream = (ev) => {
+        if (ev && ev.stream) {
+          ev.stream.getTracks().forEach((t) => { try { remoteStream.addTrack(t); } catch (err) { /* ignore */ } });
         }
-      } else if (type === 'ice' && m.candidate) {
+        setLiveStreamPlaying(video, remoteStream, status, isVideo, s);
+      };
+
+      pc.oniceconnectionstatechange = () => {
+        if (liveStream !== s) return;
+        const st = pc.iceConnectionState;
+        if (st === 'failed' || st === 'disconnected') {
+          status.textContent = '⚠️ Connection ' + st + ' — streaming stopped.';
+          liveCleanup();
+        } else if (st === 'connected' || st === 'completed') {
+          if (s.negTimer) { clearTimeout(s.negTimer); s.negTimer = null; }
+        }
+      };
+
+      pc.onicecandidate = (ev) => {
+        if (!ev.candidate || !s.ws) return;
         try {
-          await pc.addIceCandidate(new RTCIceCandidate({
-            candidate: m.candidate.candidate,
-            sdpMid: m.candidate.sdpMid,
-            sdpMLineIndex: m.candidate.sdpMLineIndex,
+          s.ws.send(JSON.stringify({
+            type: 'ice',
+            candidate: {
+              candidate: ev.candidate.candidate,
+              sdpMid: ev.candidate.sdpMid,
+              sdpMLineIndex: ev.candidate.sdpMLineIndex,
+            },
           }));
         } catch (err) { /* ignore */ }
-      }
-    };
+      };
 
-    ws.onerror = () => { status.textContent = '⚠️ Signaling unavailable (relay unreachable).'; };
-    ws.onclose = () => { if (liveStream === s) status.textContent = 'Signaling closed — press Stop, then Back.'; };
+      // Give negotiation up to ~20s to complete, then tear down and stop the relay.
+      s.negTimer = setTimeout(() => {
+        if (liveStream !== s) return;
+        if (s.gotOffer && (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed')) return;
+        status.textContent = '⚠️ Negotiation timed out (20s) — check the phone and retry.';
+        liveCleanup();
+      }, 20000);
+
+      const wsUrl = SIGNAL_WS_BASE + '?room=' + encodeURIComponent(id) + '&role=browser';
+      status.textContent = 'Connecting to ' + id + '…';
+
+      let ws;
+      try {
+        ws = new WebSocket(wsUrl);
+      } catch (err) {
+        status.textContent = '⚠️ WebSocket not supported / blocked.';
+        liveCleanup();
+        return;
+      }
+      s.ws = ws;
+
+      ws.onopen = () => {
+        // Announce ourselves; re-request the offer until the phone replies (the
+        // phone may have finished its setup before we joined the room).
+        const ping = () => {
+          if (s.gotOffer || liveStream !== s) return;
+          try { ws.send(JSON.stringify({ type: 'start' })); } catch (err) { /* ignore */ }
+        };
+        ping();
+        s.timer = setInterval(ping, 2500);
+      };
+
+      ws.onmessage = async (evt) => {
+        let m;
+        try { m = JSON.parse(evt.data); } catch (err) { return; }
+        const type = m && m.type;
+        if (type === 'offer' && m.sdp && m.sdp.sdp) {
+          if (s.gotOffer) return; // answer only once
+          s.gotOffer = true;
+          try {
+            await pc.setRemoteDescription(new RTCSessionDescription(m.sdp));
+            const answer = await pc.createAnswer();
+            await pc.setLocalDescription(answer);
+            ws.send(JSON.stringify({ type: 'answer', sdp: { type: 'answer', sdp: answer.sdp } }));
+            status.textContent = 'Negotiating… sending answer';
+          } catch (err) {
+            status.textContent = '⚠️ Negotiation failed: ' + (err && err.message ? err.message : err);
+          }
+        } else if (type === 'ice' && m.candidate) {
+          try {
+            await pc.addIceCandidate(new RTCIceCandidate({
+              candidate: m.candidate.candidate,
+              sdpMid: m.candidate.sdpMid,
+              sdpMLineIndex: m.candidate.sdpMLineIndex,
+            }));
+          } catch (err) { /* ignore */ }
+        }
+      };
+
+      ws.onerror = () => { status.textContent = '⚠️ Signaling unavailable (relay unreachable).'; };
+      ws.onclose = () => { if (liveStream === s) status.textContent = 'Signaling closed — press Stop, then Back.'; };
+    } finally {
+      liveBusy = false;
+      if (startBtn) startBtn.disabled = false;
+    }
   }
 
   // The additional tiles (History / Gallery / Devices / Phone 3D / Live).
@@ -2430,6 +2644,42 @@
     { id: 'livecamera', emoji: '🎥', label: 'Live Camera', sub: 'WebRTC video + mic', color: '#ff6b6b', onClose: liveCleanup, build: (s) => openLiveStream(s, 'camera') },
     { id: 'liveaudio', emoji: '🎙️', label: 'Live Audio', sub: 'WebRTC mic streaming', color: '#38b2ac', onClose: liveCleanup, build: (s) => openLiveStream(s, 'audio') },
   ];
+
+  // ---------------------------------------------------------------------------
+  // Multi-tab poll coordination (best-effort). Only one visible tab runs the
+  // periodic device/status polls so several open tabs don't each hammer the free
+  // relay. Tabs heartbeat over a BroadcastChannel; the lexicographically smallest
+  // live tab id becomes the poll leader.
+  // ---------------------------------------------------------------------------
+  const POLL_BC_NAME = 'aiAgent.poll';
+  let pollBC = null;
+  let pollTabId = '';
+  const pollSeen = {};
+  let pollIsLeader = !('BroadcastChannel' in window);
+
+  function initPollCoordinator() {
+    if (!('BroadcastChannel' in window)) { pollIsLeader = true; return; }
+    pollTabId = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+    pollSeen[pollTabId] = Date.now();
+    try {
+      pollBC = new BroadcastChannel(POLL_BC_NAME);
+      pollBC.onmessage = (e) => {
+        const d = e && e.data;
+        if (d && d.id) pollSeen[d.id] = Date.now();
+      };
+      setInterval(() => {
+        if (!pollBC) return;
+        const now = Date.now();
+        Object.keys(pollSeen).forEach((k) => { if (now - pollSeen[k] > 15000) delete pollSeen[k]; });
+        pollSeen[pollTabId] = now;
+        try { pollBC.postMessage({ id: pollTabId }); } catch (err) { /* ignore */ }
+        const ids = Object.keys(pollSeen).sort();
+        pollIsLeader = (ids[0] === pollTabId);
+      }, 3000);
+    } catch (err) {
+      pollIsLeader = true; // BroadcastChannel blocked — this tab polls.
+    }
+  }
 
   // ---------------------------------------------------------------------------
   // PWA install prompt
@@ -2609,12 +2859,13 @@
 
   refreshMcpStatus();
   renderMcpTools();
+  initPollCoordinator(); // elect a single poll leader across open tabs
   // Poll device status every 2 min (was 15s — was flooding the free relay).
-  setInterval(refreshMcpStatus, 120000);
+  setInterval(() => { if (pollIsLeader) refreshMcpStatus(); }, 120000);
 
   // Status bar reads (battery/storage/network) — initial + every 5 min.
   // (Was 30s: 3 commands per poll was flooding the relay with a huge backlog,
   //  which starved media commands like camera/audio and caused timeouts.)
   refreshStatusBar();
-  setInterval(refreshStatusBar, 300000);
+  setInterval(() => { if (pollIsLeader) refreshStatusBar(); }, 300000);
 })();
