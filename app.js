@@ -1390,6 +1390,10 @@
         deviceSelect.appendChild(opt);
       });
       deviceSelect.value = prev;
+      if (deviceSelect.value !== prev && prev) {
+        selectedDeviceId = '';
+        tryRemoveItem('aiAgent.deviceId');
+      }
     }
     updateStatusDevice();
   }
@@ -1405,7 +1409,7 @@
       : null;
     const device = selected || online[0] || null;
     if (device) {
-      dot.className = 'dot dot--online';
+      dot.className = device.online ? 'dot dot--online' : 'dot dot--offline';
       if (label) label.textContent = friendlyDeviceName(device);
     } else {
       dot.className = 'dot dot--offline';
@@ -1555,7 +1559,10 @@
   // `opts.log === false` suppresses command-history logging (used by background
   // status polling so it doesn't flood the history).
   async function postCommand(command, deviceId, opts) {
-    const targetDevice = deviceId || selectedDeviceId;
+    let targetDevice = deviceId || selectedDeviceId;
+    if (!targetDevice) {
+      try { targetDevice = await resolveOnlineTargetId(); } catch (err) { targetDevice = ''; }
+    }
     const log = !opts || opts.log !== false;
     let data = null;
     let errorDetail = '';
@@ -1563,19 +1570,34 @@
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), COMMAND_TIMEOUT_MS);
     try {
-      const res = await fetch(BACKEND_COMMAND_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Web-Key': agentWebKey() },
-        body: JSON.stringify({
-          command: command,
-          ...(targetDevice ? { device_id: targetDevice } : {}),
-        }),
-        signal: controller.signal,
-      });
+      let res;
+      try {
+        res = await fetch(BACKEND_COMMAND_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Web-Key': agentWebKey() },
+          body: JSON.stringify({
+            command: command,
+            ...(targetDevice ? { device_id: targetDevice } : {}),
+          }),
+          signal: controller.signal,
+        });
+      } catch (err) {
+        if (err && err.name === 'AbortError') {
+          errorDetail = 'Timed out';
+          throw errWithKind('timeout', errorDetail);
+        }
+        errorDetail = 'Backend unreachable';
+        throw errWithKind('network', errorDetail);
+      }
+
       try { data = await res.json(); } catch (e) { data = null; }
       if (!res.ok) {
         errorDetail = (data && (data.error || data.message || data.result)) || ('HTTP ' + res.status);
-        throw new Error(errorDetail);
+        if (res.status === 401 || res.status === 403) {
+          errorDetail = 'Invalid security key';
+          throw errWithKind('auth', errorDetail);
+        }
+        throw errWithKind(classifyError(res.status, errorDetail), errorDetail);
       }
 
       // Backward-compatible: the response already carries the final result.
@@ -1608,8 +1630,8 @@
       return data;
     } catch (err) {
       if (err && err.name === 'AbortError') {
-        errorDetail = 'Timed out after 70s — the phone may be busy or offline.';
-        throw new Error(errorDetail);
+        errorDetail = 'Timed out';
+        throw errWithKind('timeout', errorDetail);
       }
       throw err;
     } finally {
@@ -1730,7 +1752,7 @@
       const raw = (data && typeof data.result !== 'undefined') ? data.result : '';
       renderToolResult(out, raw, kind || 'auto');
     } catch (err) {
-      const msg = err && err.message ? err.message : 'Request failed';
+      const msg = formatError(err);
       out.innerHTML = '';
       out.appendChild(el('pre', 'result-pre result-error', '⚠️ ' + msg));
       toast('⚠️ ' + msg);
@@ -3320,6 +3342,15 @@
           // Backend rejected the key — stay locked and don't linger a bad key.
           try { localStorage.removeItem('agentWebKey'); } catch { /* ignore */ }
           failGate('❌ Invalid security key — the backend rejected it.');
+          return;
+        }
+        if (!res.ok) {
+          failGate('⚠️ Backend error (HTTP ' + res.status + ')');
+          return;
+        }
+
+        if (!res.ok) {
+          failGate('⚠️ Backend error (HTTP ' + res.status + ')');
           return;
         }
 
