@@ -280,6 +280,17 @@
   // Shared-secret web key for the backend's sensitive endpoints. The worker is
   // permissive when `AGENT_WEB_KEY` is unset, so sending an empty string when the
   // key isn't configured is forward-compatible and causes no regression.
+  //
+  // SECURITY note (deliberate trade-off): this value must persist in
+  // localStorage so it can back the `X-Web-Key` header on every fetch. That
+  // means any script running on this origin could in principle read it, which is
+  // exactly why the rest of this file never places untrusted (SMS / contacts /
+  // notifications / command results / chat) data into `innerHTML` — see
+  // `renderToolResult` (textContent-based) and `linkify` (every segment is HTML-
+  // escaped). It is stored in this one key only, never duplicated anywhere else.
+  // BYOK `providers[].apiKey` values live in localStorage (`saveProviders`) for
+  // the same reason: they must survive reloads, so the same XSS-hardening
+  // invariant is what keeps them from being exfiltrated.
   function agentWebKey() {
     try { return localStorage.getItem('agentWebKey') || ''; } catch { return ''; }
   }
@@ -1074,7 +1085,11 @@
     return new Promise((resolve) => {
       const tick = () => {
         if (bubble) {
-          bubble.innerHTML = '<span class="counting-label">⏳ Rate limit — ' + remaining + 's la auto-retry…</span>';
+          bubble.innerHTML = '';
+          const label = document.createElement('span');
+          label.className = 'counting-label';
+          label.textContent = '⏳ Rate limit — ' + remaining + 's la auto-retry…';
+          bubble.appendChild(label);
         }
         if (meta) meta.textContent = 'AI Agent · retrying…';
         if (remaining <= 0) { resolve(); return; }
@@ -3168,10 +3183,9 @@
   }
 
   // ---------------------------------------------------------------------------
-  // Password gate (client-side lock screen)
+  // Security-key gate (lock screen, verified against the backend)
   // ---------------------------------------------------------------------------
   const GATE_KEY = 'aiAgent.unlocked';
-  const GATE_PASSWORD = 'AI_AGENT';
   const passwordGate = document.getElementById('passwordGate');
   const gateForm = document.getElementById('gateForm');
   const gatePassword = document.getElementById('gatePassword');
@@ -3200,8 +3214,11 @@
     gateCard.classList.add('gate__card--shake');
   }
 
-  function failGate() {
-    if (gateError) gateError.classList.add('is-visible');
+  function failGate(message) {
+    if (gateError) {
+      if (message) gateError.textContent = message;
+      gateError.classList.add('is-visible');
+    }
     shakeGate();
     if (gatePassword) {
       gatePassword.value = '';
@@ -3214,14 +3231,43 @@
     if (isUnlocked()) hideGate();
     else showGate();
 
-    gateForm.addEventListener('submit', (e) => {
+    // Guard against a double-submit while the backend key check is in flight.
+    let gateChecking = false;
+
+    gateForm.addEventListener('submit', async (e) => {
       e.preventDefault();
-      if (gatePassword && gatePassword.value === GATE_PASSWORD) {
+      if (gateChecking) return;
+      const key = gatePassword && gatePassword.value ? gatePassword.value.trim() : '';
+      if (gateError) gateError.classList.remove('is-visible');
+      gateChecking = true;
+      try {
+        // Persist the entered security key (it drives the X-Web-Key header), then
+        // verify it against the backend. There is NO client-side comparison or
+        // hardcoded key: the app unlocks only when the backend accepts the key.
+        try { localStorage.setItem('agentWebKey', key); } catch { /* ignore */ }
+
+        let res;
+        try {
+          res = await fetch(BACKEND_DEVICES_URL, { headers: { 'X-Web-Key': key } });
+        } catch (err) {
+          // Backend unreachable — cannot verify the key, so do not unlock.
+          failGate('⚠️ Backend unreachable — could not verify your key.');
+          return;
+        }
+
+        if (res.status === 401 || res.status === 403) {
+          // Backend rejected the key — stay locked and don't linger a bad key.
+          try { localStorage.removeItem('agentWebKey'); } catch { /* ignore */ }
+          failGate('❌ Invalid security key — the backend rejected it.');
+          return;
+        }
+
+        // Backend recognized the key (or is permissive when AGENT_WEB_KEY is
+        // unset) — unlock for this session only.
         try { sessionStorage.setItem(GATE_KEY, '1'); } catch { /* ignore */ }
-        if (gateError) gateError.classList.remove('is-visible');
         hideGate();
-      } else {
-        failGate();
+      } finally {
+        gateChecking = false;
       }
     });
 
