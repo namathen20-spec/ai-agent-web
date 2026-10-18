@@ -2488,6 +2488,8 @@
   // Render relay is never in the media path.
   // ---------------------------------------------------------------------------
   const SIGNAL_WS_BASE = 'wss://gokul-agent-server.onrender.com/signal';
+  // Relay auth for the /signal WebSocket (matches the relay API key).
+  const SIGNAL_KEY = '&key=' + encodeURIComponent('Y7I13VPjo7X32XzektRatuYXD6ROvvwdvJdeT3Gf8roX');
   const LIVE_STUN = 'stun:stun.l.google.com:19302';
   // Public TURN relay (openrelay.metered.ca) so peers behind symmetric NAT can
   // still connect when a direct host/STUN candidate can't be negotiated.
@@ -2689,7 +2691,7 @@
         liveCleanup();
       }, 20000);
 
-      const wsUrl = SIGNAL_WS_BASE + '?room=' + encodeURIComponent(id) + '&role=browser';
+      const wsUrl = SIGNAL_WS_BASE + '?room=' + encodeURIComponent(id) + '&role=browser' + SIGNAL_KEY;
       status.textContent = 'Connecting to ' + id + '…';
 
       let ws;
