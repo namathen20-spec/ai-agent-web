@@ -278,8 +278,10 @@
   // ---------------------------------------------------------------------------
 
   // Shared-secret web key for the backend's sensitive endpoints. The worker is
-  // permissive when `AGENT_WEB_KEY` is unset, so sending an empty string when the
-  // key isn't configured is forward-compatible and causes no regression.
+  // FAIL-CLOSED: if `AGENT_WEB_KEY` is unset/blank on the worker every protected
+  // request is denied (401), including one sent with the correct key. The key
+  // must therefore actually be set as a Cloudflare secret AND the worker must be
+  // (re)deployed with that secret for unlocks to succeed.
   //
   // SECURITY note (deliberate trade-off): this value must persist in
   // localStorage so it can back the `X-Web-Key` header on every fetch. That
@@ -2131,7 +2133,9 @@
     if (threePromise) return threePromise;
     threePromise = new Promise((resolve, reject) => {
       const s = document.createElement('script');
-      s.src = 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js';
+      // Self-hosted copy (pinned three@0.160.0) — removes the jsDelivr CDN
+      // dependency so the 3D view no longer loads third-party code at runtime.
+      s.src = './three.min.js';
       s.async = true;
       s.onload = () => resolve(window.THREE);
       s.onerror = () => { threePromise = null; reject(new Error('Three.js failed to load')); };
