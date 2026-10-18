@@ -26,6 +26,9 @@
   // until { ok, result } is ready (or { ok: false, pending: true } meanwhile).
   const BACKEND_COMMAND_URL = BACKEND_BASE + '/api/command';
   const BACKEND_RESULT_URL = BACKEND_BASE + '/api/result';
+  const BACKEND_LOCATION_URL = BACKEND_BASE + '/api/location_history';
+  const BACKEND_SCHEDULE_URL = BACKEND_BASE + '/api/schedule';
+  const BACKEND_NOTIF_URL = BACKEND_BASE + '/api/notif_stream';
 
   const LOCAL_PROVIDER = {
     id: 'local',
@@ -2008,16 +2011,37 @@
       box.appendChild(el('div', 'hint', 'No phones registered yet.'));
       return;
     }
+    const firstOnline = devices.find((d) => d.online);
+    const firstOnlineId = firstOnline ? (firstOnline.device_id || firstOnline.id || '') : '';
+    const layout = el('div', 'devices__grid');
+    box.appendChild(layout);
     devices.forEach((d) => {
       const id = d.device_id || d.id || '';
       const card = el('div', 'device-card');
+      // Highlight the currently-selected device (or the first online one by default).
+      const isPrimary = id
+        ? (selectedDeviceId ? id === selectedDeviceId : (d.online && id === firstOnlineId))
+        : false;
+      if (isPrimary) card.classList.add('device-card--primary');
       const head = el('div', 'device-card__head');
       head.appendChild(el('span', 'dot ' + (d.online ? 'dot--online' : 'dot--offline')));
       head.appendChild(el('span', 'device-card__name', d.name || d.model || id || '?'));
+      if (isPrimary) head.appendChild(el('span', 'device-card__primary-badge', '★ Primary'));
       const status = el('div', 'device-card__status', d.online ? 'Loading status…' : '⚪ Offline');
       card.appendChild(head);
       card.appendChild(status);
-      box.appendChild(card);
+      if (d.online && id) {
+        card.classList.add('device-card--clickable');
+        card.title = 'Make primary';
+        card.setAttribute('role', 'button');
+        card.tabIndex = 0;
+        const activate = () => { selectDevice(id); renderDevices(box); refreshStatusBar(); };
+        card.addEventListener('click', activate);
+        card.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); activate(); }
+        });
+      }
+      layout.appendChild(card);
       // Only fetch status for ONLINE devices — an offline device never returns,
       // which parks commands in the relay queue and starves other commands.
       if (d.online) loadDeviceStatus(id, status);
@@ -2433,34 +2457,49 @@
     if (attempt && typeof attempt.catch === 'function') {
       attempt.then(() => {
         if (liveStream !== s) return;
+        // audio mode: unmute immediately (play succeeded). video mode: keep muted
+        // for autoplay but wire tap-to-unmute so the mic is audible on demand.
         if (!isVideo) { try { video.muted = false; } catch (err) { /* ignore */ } }
-        status.textContent = isVideo ? '🎥 Streaming live (video + mic)…' : '🎙️ Streaming live audio…';
+        if (isVideo) {
+          status.textContent = '🎥 video live · 🔇 tap here to hear mic';
+          enableTapToUnmute(video, status, '🎥 video + mic live…');
+        } else {
+          status.textContent = '🎙️ Streaming live audio…';
+        }
       }).catch(() => {
         if (liveStream !== s) return;
+        // autoplay blocked — offer tap-to-unmute in BOTH modes.
         if (isVideo) {
-          status.textContent = '🎥 Streaming live (video + mic)…';
+          status.textContent = '🎥 video · 🔇 tap to unmute + hear mic';
+          enableTapToUnmute(video, status, '🎥 video + mic live…');
         } else {
           status.textContent = '🔇 Tap to unmute';
-          enableTapToUnmute(video, status);
+          enableTapToUnmute(video, status, '🎙️ Streaming live audio…');
         }
       });
     } else {
-      status.textContent = isVideo ? '🎥 Streaming live (video + mic)…' : '🎙️ Streaming live audio…';
+      if (isVideo) {
+        status.textContent = '🎥 video live · 🔇 tap here to hear mic';
+        enableTapToUnmute(video, status, '🎥 video + mic live…');
+      } else {
+        status.textContent = '🎙️ Streaming live audio…';
+      }
     }
   }
 
-  function enableTapToUnmute(video, status) {
+  function enableTapToUnmute(video, status, doneText) {
     if (!status || status._unmuteTap) return;
     status._unmuteTap = true;
     status.style.cursor = 'pointer';
-    status.title = 'Tap to unmute';
+    status.title = 'Tap to unmute mic';
     status.addEventListener('click', () => {
       try {
         video.muted = false;
         const p = video.play();
         if (p && typeof p.catch === 'function') p.catch(() => { /* ignore */ });
-        status.textContent = '🎙️ Streaming live audio…';
+        status.textContent = doneText || '🎙️ Streaming live audio…';
         status.style.cursor = '';
+        status.title = '';
       } catch (err) { /* ignore */ }
     });
   }
@@ -2635,11 +2674,394 @@
     }
   }
 
+  // ---- Live location MAP view (#12) -----------------------------------------
+  // Renders an OpenStreetMap iframe embed (no API key) centered on the latest
+  // GPS fix, plus a text list of recent lat,lng,ts below.
+  function osmEmbedUrl(lat, lng) {
+    const pad = 0.006;
+    const minLon = lng - pad, minLat = lat - pad * 0.75;
+    const maxLon = lng + pad, maxLat = lat + pad * 0.75;
+    return 'https://www.openstreetmap.org/export/embed.html?bbox=' +
+      minLon.toFixed(6) + '%2C' + minLat.toFixed(6) + '%2C' +
+      maxLon.toFixed(6) + '%2C' + maxLat.toFixed(6) +
+      '&layer=mapnik&marker=' + lat.toFixed(6) + '%2C' + lng.toFixed(6);
+  }
+
+  // Defensively decode whatever shape the relay returns into {lat,lng,ts} points.
+  function parseLocationPoints(data) {
+    const items = [];
+    const push = (p) => {
+      if (!p || typeof p !== 'object') return;
+      const lat = parseFloat(p.lat ?? p.latitude ?? p.y);
+      const lng = parseFloat(p.lng ?? p.lon ?? p.longitude ?? p.long ?? p.x);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+      const ts = p.ts ?? p.time ?? p.timestamp ?? p.created_at ?? p.date ?? '';
+      items.push({ lat, lng, ts });
+    };
+    if (Array.isArray(data)) data.forEach(push);
+    else if (data && typeof data === 'object') {
+      ['points', 'history', 'locations', 'items', 'entries'].forEach((k) => {
+        if (Array.isArray(data[k])) data[k].forEach(push);
+      });
+      push(data); // in case it's a single point object
+    }
+    return items;
+  }
+
+  async function openMap(scope) {
+    const box = el('div', 'map-view');
+    scope.result.appendChild(box);
+
+    let deviceId = selectedDeviceId || '';
+    if (!deviceId) {
+      try { deviceId = await resolveOnlineTargetId(); } catch (err) { deviceId = ''; }
+    }
+
+    box.appendChild(el('div', 'result-loading', 'Loading location history…'));
+
+    const qs = new URLSearchParams({ limit: '50' });
+    if (deviceId) qs.set('device_id', deviceId);
+
+    let points = [];
+    let unavailable = false;
+    try {
+      const res = await fetch(BACKEND_LOCATION_URL + '?' + qs.toString(), {
+        headers: { 'X-Web-Key': agentWebKey() },
+      });
+      if (res.status === 404) {
+        unavailable = true; // endpoint not wired on the relay yet
+      } else if (!res.ok) {
+        throw new Error('HTTP ' + res.status);
+      } else {
+        const data = await res.json().catch(() => null);
+        points = parseLocationPoints(data);
+      }
+    } catch (err) {
+      box.innerHTML = '';
+      box.appendChild(el('div', 'hint', '🔌 Could not load location history — the relay did not respond.'));
+      return;
+    }
+
+    box.innerHTML = '';
+    if (unavailable) {
+      box.appendChild(el('div', 'hint', '📍 Location history is not available yet (the relay does not expose /location_history).'));
+      box.appendChild(el('div', 'hint', 'Use the 📍 Location tool to fetch the current GPS position.'));
+      return;
+    }
+    if (!points.length) {
+      box.appendChild(el('div', 'hint', 'No location history yet — the phone has not reported any GPS fixes.'));
+      return;
+    }
+
+    const latest = points[0];
+    const iframe = el('iframe', 'map-view__frame');
+    iframe.src = osmEmbedUrl(latest.lat, latest.lng);
+    iframe.loading = 'lazy';
+    iframe.title = 'Device location map';
+    iframe.referrerPolicy = 'no-referrer-when-downgrade';
+    box.appendChild(iframe);
+
+    box.appendChild(el('div', 'tool-controls__label', 'Recent locations'));
+    const list = el('div', 'map-view__list');
+    points.forEach((p) => {
+      const row = el('div', 'map-view__row');
+      row.appendChild(el('span', 'map-view__coords', p.lat.toFixed(5) + ', ' + p.lng.toFixed(5)));
+      if (p.ts) row.appendChild(el('span', 'map-view__ts', new Date(p.ts).toLocaleString()));
+      list.appendChild(row);
+    });
+    box.appendChild(list);
+  }
+
+  // ---- Automation scheduler view (#13: ⏰ Tasks) -----------------------------
+  function parseScheduleList(data) {
+    let arr = null;
+    if (Array.isArray(data)) arr = data;
+    else if (data && typeof data === 'object') {
+      ['tasks', 'schedules', 'schedule', 'items'].forEach((k) => {
+        if (Array.isArray(data[k])) { arr = data[k]; return; }
+      });
+    }
+    return (arr || [])
+      .filter((t) => t && typeof t === 'object')
+      .map((t) => ({
+        id: t.id ?? t.task_id ?? t._id ?? t.name ?? '',
+        command: t.command ?? t.cmd ?? '',
+        interval_seconds: t.interval_seconds ?? t.interval ?? t.every ?? '',
+        device_id: t.device_id ?? t.device ?? '',
+      }));
+  }
+
+  async function populateTaskDevices(sel) {
+    let devices = devicesCache;
+    if (!devices || !devices.length) {
+      try { devices = await fetchDevices(); populateDeviceSelect(devices); } catch (err) { devices = []; }
+    }
+    sel.innerHTML = '';
+    sel.appendChild(new Option('📱 Auto device', ''));
+    (devices || []).forEach((d) => {
+      const v = d.device_id || d.id || '';
+      if (v) sel.appendChild(new Option(d.name || d.model || v, v));
+    });
+  }
+
+  async function refreshTasks(listEl) {
+    listEl.innerHTML = '';
+    listEl.appendChild(el('div', 'result-loading', 'Loading tasks…'));
+    let tasks = [];
+    try {
+      const res = await fetch(BACKEND_SCHEDULE_URL, { headers: { 'X-Web-Key': agentWebKey() } });
+      if (res.status === 404) {
+        listEl.innerHTML = '';
+        listEl.appendChild(el('div', 'hint', '⏰ Task scheduling is not available yet (the relay does not expose /schedule).'));
+        return;
+      }
+      const data = await res.json().catch(() => null);
+      tasks = parseScheduleList(data);
+    } catch (err) {
+      listEl.innerHTML = '';
+      listEl.appendChild(el('div', 'hint', '🔌 Could not load tasks — the relay did not respond.'));
+      return;
+    }
+    listEl.innerHTML = '';
+    if (!tasks.length) {
+      listEl.appendChild(el('div', 'hint', 'No scheduled tasks yet.'));
+      return;
+    }
+    tasks.forEach((t) => listEl.appendChild(taskRow(t, listEl)));
+  }
+
+  function taskRow(t, listEl) {
+    const row = el('div', 'tasks__row');
+    const head = el('div', 'tasks__row-head');
+    head.appendChild(el('span', 'tasks__cmd', t.command || '(no command)'));
+    const del = makeButton('🗑 Delete', () => deleteTask(t.id, listEl), 'tc-btn tasks__del');
+    head.appendChild(del);
+    row.appendChild(head);
+    const meta = [];
+    if (t.interval_seconds != null && t.interval_seconds !== '') meta.push('every ' + t.interval_seconds + 's');
+    if (t.device_id) meta.push('device ' + t.device_id);
+    if (meta.length) row.appendChild(el('div', 'tasks__meta', meta.join(' · ')));
+    return row;
+  }
+
+  async function deleteTask(id, listEl) {
+    if (id == null || id === '') {
+      toast('⚠️ This task has no id — the relay did not return one, so it cannot be deleted from here.');
+      return;
+    }
+    try {
+      const res = await fetch(BACKEND_SCHEDULE_URL, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json', 'X-Web-Key': agentWebKey() },
+        body: JSON.stringify({ id: String(id) }),
+      });
+      if (res.status === 404) { toast('⏰ Task deletion is not available yet.'); return; }
+      if (!res.ok) {
+        const d = await res.json().catch(() => null);
+        throw new Error((d && (d.error || d.message)) || ('HTTP ' + res.status));
+      }
+      toast('🗑 Task deleted');
+      refreshTasks(listEl);
+    } catch (err) {
+      toast('⚠️ ' + (err.message || 'Could not delete task'));
+    }
+  }
+
+  async function addTask(deviceSel, cmdInput, intervalInput, listEl) {
+    const command = cmdInput.value.trim();
+    const interval = parseInt(intervalInput.value, 10);
+    if (!command) { toast('Enter a command to schedule'); return; }
+    if (!Number.isFinite(interval) || interval < 1) { toast('Interval must be a positive number of seconds'); return; }
+    const device_id = deviceSel.value || '';
+    try {
+      const res = await fetch(BACKEND_SCHEDULE_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Web-Key': agentWebKey() },
+        body: JSON.stringify({ device_id, command, interval_seconds: interval }),
+      });
+      if (res.status === 404) { toast('⏰ Scheduling is not available yet.'); return; }
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error((data && (data.error || data.message)) || ('HTTP ' + res.status));
+      cmdInput.value = '';
+      intervalInput.value = '60';
+      toast('✅ Task scheduled');
+      refreshTasks(listEl);
+    } catch (err) {
+      toast('⚠️ ' + (err.message || 'Could not schedule task'));
+    }
+  }
+
+  function openTasks(scope) {
+    const box = el('div', 'tasks');
+    scope.result.appendChild(box);
+    box.appendChild(el('div', 'hint', '⏰ Tasks run on the relay and are memory-only — they reset if the relay restarts.'));
+
+    const formBox = el('div', 'tasks__form');
+    formBox.appendChild(el('div', 'tool-controls__label', 'Add a scheduled task'));
+    const deviceSel = el('select', 'tasks__device');
+    formBox.appendChild(makeField('Device', deviceSel));
+    const cmdInput = makeInput('text', 'Command (e.g. battery, camera_link back)', '');
+    formBox.appendChild(makeField('Command', cmdInput));
+    const intervalInput = makeInput('number', 'Interval in seconds', 60);
+    formBox.appendChild(makeField('Interval (s)', intervalInput));
+    formBox.appendChild(makeButton('＋ Add task', () => addTask(deviceSel, cmdInput, intervalInput, listEl), 'tc-btn tc-btn--primary'));
+    box.appendChild(formBox);
+
+    const listEl = el('div', 'tasks__list');
+    box.appendChild(listEl);
+
+    populateTaskDevices(deviceSel);
+    refreshTasks(listEl);
+  }
+
+  // ---- Real-time notifications (#14: 🔴 Live Notifs) -------------------------
+  // EventSource cannot set the X-Web-Key / custom headers, so we consume the SSE
+  // stream with fetch() + a ReadableStream reader and append `data:` lines.
+  const notifBtn = $('#notifBtn');
+  const notifBadge = $('#notifBadge');
+  let notifCount = 0;
+  const recentNotifs = [];
+  let notifStreamActive = false;
+  let notifReconnectTimer = null;
+
+  function updateNotifBadge() {
+    if (!notifBadge) return;
+    if (notifCount > 0) {
+      notifBadge.hidden = false;
+      notifBadge.textContent = notifCount > 99 ? '99+' : String(notifCount);
+    } else {
+      notifBadge.hidden = true;
+    }
+  }
+
+  function setNotifState(state) {
+    if (!notifBtn) return;
+    notifBtn.classList.toggle('notif-btn--offline', state === 'offline');
+    notifBtn.title = state === 'offline' ? '🔴 Notifications offline' : '🔴 Live notifications';
+  }
+
+  function handleNotifData(data) {
+    let obj = null;
+    try { obj = JSON.parse(data); } catch (err) { obj = null; }
+    let text = '';
+    if (obj && typeof obj === 'object') {
+      const raw = obj.text ?? obj.message ?? obj.notification ?? obj.alert ?? obj.title ?? obj.body ?? obj.data;
+      if (typeof raw === 'string') text = raw;
+      else if (raw && typeof raw === 'object') {
+        const t = raw.text ?? raw.message ?? raw.title ?? raw.body ?? '';
+        if (typeof t === 'string') text = t;
+      }
+    } else {
+      text = String(data || '').trim();
+    }
+    if (!text) return;
+    notifCount++;
+    recentNotifs.push({ ts: Date.now(), text });
+    if (recentNotifs.length > 8) recentNotifs.shift();
+    updateNotifBadge();
+    toast('🔔 ' + text);
+  }
+
+  function scheduleNotifReconnect() {
+    if (notifReconnectTimer) return;
+    notifReconnectTimer = setTimeout(() => {
+      notifReconnectTimer = null;
+      if (document.visibilityState === 'visible') connectNotifStream();
+      else scheduleNotifReconnect();
+    }, 10000);
+  }
+
+  async function connectNotifStream() {
+    if (notifStreamActive) return;
+    notifStreamActive = true;
+
+    const qs = new URLSearchParams();
+    if (selectedDeviceId) qs.set('device_id', selectedDeviceId);
+    const url = BACKEND_NOTIF_URL + (qs.toString() ? '?' + qs.toString() : '');
+
+    let res;
+    try {
+      res = await fetch(url, {
+        headers: { 'X-Web-Key': agentWebKey(), 'Accept': 'text/event-stream' },
+        cache: 'no-store',
+      });
+    } catch (err) {
+      notifStreamActive = false;
+      setNotifState('offline');
+      scheduleNotifReconnect();
+      return;
+    }
+
+    if (!res.ok || !res.body || typeof res.body.getReader !== 'function') {
+      notifStreamActive = false;
+      setNotifState('offline');
+      scheduleNotifReconnect();
+      return;
+    }
+
+    setNotifState('online');
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder('utf-8');
+    let buffer = '';
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        let nl;
+        while ((nl = buffer.indexOf('\n')) !== -1) {
+          const line = buffer.slice(0, nl).replace(/\r$/, '');
+          buffer = buffer.slice(nl + 1);
+          if (line.slice(0, 5) === 'data:') {
+            const payload = line.slice(5).replace(/^\s+/, '');
+            if (payload) handleNotifData(payload);
+          }
+        }
+      }
+    } catch (err) {
+      /* stream interrupted — reconnect below */
+    } finally {
+      try { reader.cancel(); } catch (err) { /* ignore */ }
+      notifStreamActive = false;
+      setNotifState('offline');
+      scheduleNotifReconnect();
+    }
+  }
+
+  function initNotifStream() {
+    if (typeof fetch !== 'function' || !window.ReadableStream || !window.TextDecoder) {
+      setNotifState('offline');
+      return;
+    }
+    connectNotifStream();
+  }
+
+  if (notifBtn) {
+    notifBtn.addEventListener('click', () => {
+      if (!notifCount) { toast('🔴 No new notifications'); return; }
+      const preview = recentNotifs.slice(-3).map((n) => n.text).join('  ·  ');
+      toast('🔴 ' + preview);
+      notifCount = 0;
+      updateNotifBadge();
+    });
+  }
+
+  // Select a device as the primary target (used by the Devices admin grid).
+  function selectDevice(id) {
+    selectedDeviceId = id || '';
+    if (selectedDeviceId) trySetItem('aiAgent.deviceId', selectedDeviceId);
+    else tryRemoveItem('aiAgent.deviceId');
+    if (deviceSelect) deviceSelect.value = selectedDeviceId;
+    updateStatusDevice();
+  }
+
   // The additional tiles (History / Gallery / Devices / Phone 3D / Live).
   const SPECIALS = [
     { id: 'history', emoji: '🕘', label: 'History', sub: 'Recent commands', color: '#8b5cf6', build: openHistory },
     { id: 'gallery', emoji: '🖼️', label: 'Gallery', sub: 'Captured media', color: '#f2b13c', build: openGallery },
     { id: 'devices', emoji: '📱', label: 'Devices', sub: 'All phones · status', color: '#3fb96a', build: openDevices },
+    { id: 'map', emoji: '📍', label: 'Map', sub: 'Live GPS history', color: '#3fb96a', build: openMap },
+    { id: 'tasks', emoji: '⏰', label: 'Tasks', sub: 'Scheduled commands', color: '#f2b13c', build: openTasks },
     { id: 'phone3d', emoji: '🛰️', label: 'Phone 3D', sub: 'Live phone model', color: '#38b2ac', onClose: disposePhone3d, build: openPhone3d },
     { id: 'livecamera', emoji: '🎥', label: 'Live Camera', sub: 'WebRTC video + mic', color: '#ff6b6b', onClose: liveCleanup, build: (s) => openLiveStream(s, 'camera') },
     { id: 'liveaudio', emoji: '🎙️', label: 'Live Audio', sub: 'WebRTC mic streaming', color: '#38b2ac', onClose: liveCleanup, build: (s) => openLiveStream(s, 'audio') },
@@ -2860,6 +3282,7 @@
   refreshMcpStatus();
   renderMcpTools();
   initPollCoordinator(); // elect a single poll leader across open tabs
+  initNotifStream(); // non-blocking SSE consumer for live phone notifications
   // Poll device status every 2 min (was 15s — was flooding the free relay).
   setInterval(() => { if (pollIsLeader) refreshMcpStatus(); }, 120000);
 

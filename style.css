@@ -1179,3 +1179,117 @@ select {
     scroll-behavior: auto !important;
   }
 }
+
+/* =====================================================================
+   Live notifications (header bell + badge)  (#14)
+   ===================================================================== */
+.notif-btn {
+  position: relative;
+  width: 42px; height: 42px; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--glass-bg);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-soft), var(--glass-inner);
+  cursor: pointer; flex-shrink: 0;
+  transition: box-shadow 0.2s ease, border-color 0.2s ease, opacity 0.2s ease;
+}
+.notif-btn:hover { box-shadow: var(--shadow-soft), var(--glass-inner), var(--neon-blue); border-color: var(--border-hover); }
+.notif-btn__icon { font-size: 16px; line-height: 1; }
+.notif-btn__badge {
+  position: absolute; top: -6px; right: -6px;
+  min-width: 18px; height: 18px; padding: 0 4px;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 10.5px; font-weight: 800; line-height: 1; color: #fff;
+  background: var(--danger);
+  border: 2px solid var(--bg);
+  border-radius: 999px;
+  box-shadow: 0 0 10px rgba(255, 107, 107, 0.55);
+}
+.notif-btn--offline { opacity: 0.55; }
+.notif-btn--offline .notif-btn__icon { filter: grayscale(1); }
+
+/* =====================================================================
+   Live location MAP view  (#12)
+   ===================================================================== */
+.map-view { display: flex; flex-direction: column; gap: 12px; }
+.map-view__frame {
+  width: 100%;
+  height: clamp(260px, 48vh, 460px);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  background: var(--panel-solid);
+  box-shadow: var(--shadow-soft);
+}
+.map-view__list { display: flex; flex-direction: column; gap: 6px; }
+.map-view__row {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 8px 12px;
+  background: var(--panel-2);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-xs);
+  font-size: 12.5px;
+}
+.map-view__coords {
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.map-view__ts { color: var(--text-faint); font-size: 11.5px; }
+
+/* =====================================================================
+   Automation scheduler view  (#13 ⏰ Tasks)
+   ===================================================================== */
+.tasks { display: flex; flex-direction: column; gap: 14px; }
+.tasks__form {
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 14px;
+  border-radius: var(--radius);
+  background: var(--glass-bg);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--shadow-soft), var(--glass-inner);
+}
+.tasks__form .field { margin-bottom: 2px; }
+.tasks__form .tc-btn { align-self: flex-start; }
+.tasks__list { display: flex; flex-direction: column; gap: 8px; }
+.tasks__row {
+  display: flex; flex-direction: column; gap: 6px;
+  padding: 12px 14px;
+  background: var(--panel-2);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  transition: background 0.16s ease, border-color 0.16s ease;
+}
+.tasks__row:hover { background: var(--panel-2-hover); border-color: var(--border-hover); }
+.tasks__row-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.tasks__cmd {
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  font-size: 13px; color: var(--text); word-break: break-word;
+}
+.tasks__del { padding: 7px 12px; font-size: 12.5px; }
+.tasks__meta { font-size: 11.5px; color: var(--text-faint); }
+
+/* =====================================================================
+   Multi-device admin grid polish  (#5)
+   ===================================================================== */
+.devices__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+}
+.device-card--clickable { cursor: pointer; }
+.device-card--clickable:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.device-card--primary {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 55%, transparent), var(--shadow-soft);
+}
+.device-card__primary-badge {
+  margin-left: auto;
+  font-size: 10.5px; font-weight: 800; letter-spacing: 0.03em;
+  color: #fff; background: var(--accent-grad);
+  padding: 2px 8px; border-radius: 999px; white-space: nowrap;
+}
