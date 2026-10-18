@@ -1551,7 +1551,7 @@
   //                          { ok:false, pending:true } meanwhile.
   // We poll every ~2s for up to ~70s, and fall back to a directly embedded
   // `result` field when present (backward-compatible with the old contract).
-  const COMMAND_TIMEOUT_MS = 70000;
+  const COMMAND_TIMEOUT_MS = 130000;
   const COMMAND_POLL_MS = 2000;
 
   // `deviceId` is an optional per-call override for multi-device control; when
