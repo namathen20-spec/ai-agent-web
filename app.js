@@ -1353,6 +1353,27 @@
   let selectedDeviceId = localStorage.getItem('aiAgent.deviceId') || '';
   let devicesCache = [];
 
+  // Human-friendly device display name. Devices can report `name` / `model` as
+  // null/empty, so we never surface a bare "?" or a long raw `dev-…` id: prefer
+  // name → model → "Phone …<short-id>" → "Unnamed phone".
+  function deviceIdOf(d) {
+    return (d && (d.device_id || d.id) && String(d.device_id || d.id).trim()) || '';
+  }
+
+  function shortDeviceId(id) {
+    const s = String(id || '').trim();
+    return s.length > 8 ? '…' + s.slice(-8) : s;
+  }
+
+  function friendlyDeviceName(d) {
+    const name = (d && typeof d.name === 'string') ? d.name.trim() : '';
+    const model = (d && typeof d.model === 'string') ? d.model.trim() : '';
+    if (name) return name;
+    if (model) return model;
+    const id = deviceIdOf(d);
+    return id ? 'Phone ' + shortDeviceId(id) : 'Unnamed phone';
+  }
+
   function populateDeviceSelect(devices) {
     devicesCache = devices || [];
     if (deviceSelect) {
@@ -1365,7 +1386,7 @@
       devicesCache.forEach((d) => {
         const opt = document.createElement('option');
         opt.value = d.device_id || d.id || '';
-        opt.textContent = (d.online ? '● ' : '○ ') + (d.name || d.model || d.device_id || '?');
+        opt.textContent = (d.online ? '● ' : '○ ') + friendlyDeviceName(d);
         deviceSelect.appendChild(opt);
       });
       deviceSelect.value = prev;
@@ -1385,7 +1406,7 @@
     const device = selected || online[0] || null;
     if (device) {
       dot.className = 'dot dot--online';
-      if (label) label.textContent = device.name || device.model || device.device_id || 'phone';
+      if (label) label.textContent = friendlyDeviceName(device);
     } else {
       dot.className = 'dot dot--offline';
       if (label) label.textContent = devicesCache.length ? 'phone offline' : 'no phone';
@@ -1408,7 +1429,7 @@
       populateDeviceSelect(devices);
       const online = devices.filter((d) => d.online);
       if (online.length) {
-        const names = online.map((d) => d.name || d.model || d.device_id).join(', ');
+        const names = online.map((d) => friendlyDeviceName(d)).join(', ');
         mcpStatusText.textContent = 'Connected — ' + names;
         mcpDot.className = 'dot dot--online';
       } else if (devices.length) {
@@ -2076,7 +2097,7 @@
       if (isPrimary) card.classList.add('device-card--primary');
       const head = el('div', 'device-card__head');
       head.appendChild(el('span', 'dot ' + (d.online ? 'dot--online' : 'dot--offline')));
-      head.appendChild(el('span', 'device-card__name', d.name || d.model || id || '?'));
+      head.appendChild(el('span', 'device-card__name', friendlyDeviceName(d)));
       if (isPrimary) head.appendChild(el('span', 'device-card__primary-badge', '★ Primary'));
       const status = el('div', 'device-card__status', d.online ? 'Loading status…' : '⚪ Offline');
       card.appendChild(head);
@@ -2386,7 +2407,7 @@
       if (phone3d !== state) return;
       let name = '';
       const dev = devicesCache.find((d) => ((d.device_id || d.id) === id) && d.online);
-      if (dev) name = dev.name || dev.model || dev.device_id || '';
+      if (dev) name = friendlyDeviceName(dev);
       if (!name && info) name = compact(info, 22);
       drawScreenTexture(state, name || '—', battery ? summarizeBattery(battery) : '—');
     };
@@ -2853,7 +2874,7 @@
     sel.appendChild(new Option('📱 Auto device', ''));
     (devices || []).forEach((d) => {
       const v = d.device_id || d.id || '';
-      if (v) sel.appendChild(new Option(d.name || d.model || v, v));
+      if (v) sel.appendChild(new Option(friendlyDeviceName(d), v));
     });
   }
 
