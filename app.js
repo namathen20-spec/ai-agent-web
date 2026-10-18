@@ -1030,7 +1030,17 @@
 
   const CHAT_TIMEOUT_MS = 180000;
 
-  async function callBackend(provider, msgs) {
+  // Human-readable labels for the dangerous phone tools used in the confirm
+  // prompt ("Allow <tool>? (<label>)"). Mirrors the worker's DANGEROUS_TOOLS set.
+  const DANGEROUS_TOOL_LABELS = {
+    phone_tap_percent: 'tap the phone screen',
+    record_screen: 'record the phone screen',
+    read_sms: 'read your SMS messages',
+    read_call_log: 'read your call log',
+    take_photo: 'take a photo with the phone camera',
+  };
+
+  async function callBackend(provider, msgs, confirmedTools) {
     let res;
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), CHAT_TIMEOUT_MS);
@@ -1046,6 +1056,7 @@
           },
           messages: msgs.map(({ role, content }) => ({ role, content })),
           ...(selectedDeviceId ? { device_id: selectedDeviceId } : {}),
+          ...(confirmedTools ? { confirmed_tools: true } : {}),
         }),
         signal: controller.signal,
       });
@@ -1075,7 +1086,8 @@
     const reply = (data && data.reply && data.reply.content) || '(no content)';
     const tools = data && Array.isArray(data.tools_used) ? data.tools_used : [];
     const media = data && Array.isArray(data.media) ? data.media : [];
-    return { content: reply, tools, media, rateLimited: false };
+    const pendingConfirmation = data && data.pending_confirmation ? data.pending_confirmation : null;
+    return { content: reply, tools, media, rateLimited: false, pendingConfirmation };
   }
 
   let isBusy = false;
@@ -1144,8 +1156,28 @@
     const thinkingEl = showThinking();
     try {
       if (USE_BACKEND) {
-        for (let attempt = 1; attempt <= 3; attempt++) {
-          const result = await callBackend(provider, history);
+        let confirmedTools = false;
+        let attempt = 0;
+        while (true) {
+          const result = await callBackend(provider, history, confirmedTools);
+
+          // Dangerous-phone-tool confirmation gate: the model asked to run a
+          // sensitive tool. Ask the user, then re-send the SAME conversation
+          // (with `confirmed_tools: true`, or a "user denied" note).
+          if (result.pendingConfirmation) {
+            const toolName = result.pendingConfirmation;
+            const desc = DANGEROUS_TOOL_LABELS[toolName] || toolName;
+            const allow = window.confirm('Allow "' + toolName + '" (' + desc + ')?\n\nOK = Yes · Cancel = No');
+            if (allow) {
+              confirmedTools = true;
+            } else {
+              addMessage('user', 'user denied', provider.model);
+              history.push({ role: 'user', content: 'user denied' });
+              confirmedTools = false;
+            }
+            continue; // confirmation does not count as a rate-limit attempt
+          }
+
           if (!result.rateLimited) {
             reply = result.content;
             toolsUsed = Array.isArray(result.tools) ? result.tools : [];
@@ -1153,7 +1185,9 @@
             ok = true;
             break;
           }
-          if (attempt === 3) {
+
+          attempt += 1;
+          if (attempt >= 3) {
             reply = '⏳ Rate limit innum irukku — konjam neram wait pannu, appuram try pannu.';
             break;
           }
