@@ -109,8 +109,9 @@
       id: 'location', emoji: '📍', label: 'Location', sub: 'GPS + maps link', color: '#3fb96a',
       build(scope) {
         scope.controls.appendChild(
-          makeButton('🗺 Get location', () => scope.run('location', 'link'), 'tc-btn tc-btn--primary')
+          makeButton('📡 Capture GPS (auto-on)', () => scope.run('location', 'link'), 'tc-btn tc-btn--primary')
         );
+        scope.controls.appendChild(el('div', 'hint', 'Auto: toggles GPS ON (Settings) + hybrid cell/wifi fallback'));
       },
     },
     {
@@ -268,6 +269,24 @@
           makeButton('📖 Read', () => scope.run('lifelog read public last ' + (parseInt(count.value, 10) || 20)), 'tc-btn tc-btn--primary')
         );
         scope.controls.appendChild(makeButton('📊 Stats', () => scope.run('lifelog stats'), 'tc-btn'));
+
+        // 🔄 Auto-refresh: poll the public life log every ~5s while toggled ON.
+        let autoTimer = null;
+        const autoBtn = makeButton('🔄 Auto', () => {
+          if (autoTimer) {
+            clearInterval(autoTimer);
+            autoTimer = null;
+            autoBtn.classList.remove('tc-btn--active');
+          } else {
+            autoBtn.classList.add('tc-btn--active');
+            const poll = () => scope.run('lifelog read public last ' + (parseInt(count.value, 10) || 20));
+            poll();
+            autoTimer = setInterval(poll, 5000);
+          }
+        }, 'tc-btn');
+        scope.controls.appendChild(autoBtn);
+        // Clear the interval when the view closes (openTool → specialOnClose → closeTool).
+        scope.onClose = () => { if (autoTimer) { clearInterval(autoTimer); autoTimer = null; } };
       },
     },
     {
@@ -2094,12 +2113,17 @@
     toolControlsEl.innerHTML = '';
     toolControlsEl.style.display = '';
     toolResultEl.innerHTML = '';
-    tool.build({
+    const scope = {
       controls: toolControlsEl,
       result: toolResultEl,
       run: (command, kind) => runCommand(command, kind),
       runMulti: (list) => runMulti(list),
-    });
+      onClose: null,
+    };
+    tool.build(scope);
+    // Tools (e.g. the life-log auto-refresh) may register scope.onClose; closeTool()
+    // invokes the current one through `specialOnClose` (same teardown path as enterView).
+    specialOnClose = scope.onClose || null;
     if (ccMain) ccMain.scrollTop = 0;
   }
 
@@ -2414,7 +2438,7 @@
       head.appendChild(el('span', 'dot ' + (d.online ? 'dot--online' : 'dot--offline')));
       head.appendChild(el('span', 'device-card__name', friendlyDeviceName(d)));
       if (isPrimary) head.appendChild(el('span', 'device-card__primary-badge', '★ Primary'));
-      const status = el('div', 'device-card__status', d.online ? 'Loading status…' : '⚪ Offline');
+      const status = el('div', 'device-card__status', d.online ? (isPrimary ? 'Loading status…' : '● Online') : '⚪ Offline');
       card.appendChild(head);
       card.appendChild(status);
       if (d.online && id) {
@@ -2429,14 +2453,27 @@
         });
       }
       layout.appendChild(card);
-      // Only fetch status for ONLINE devices — an offline device never returns,
-      // which parks commands in the relay queue and starves other commands.
-      if (d.online) loadDeviceStatus(id, status);
+      // Only fetch live status for the PRIMARY online device. An offline device never
+      // returns (parks commands in the relay queue and starves other commands), and
+      // fetching battery/storage/network for every online card on every render caused
+      // a 3×N command burst that lagged the phone + burned free-tier quota.
+      if (d.online && isPrimary) loadDeviceStatus(id, status);
     });
   }
 
+  // Timestamp cache so the primary device's status is fetched at most once per ~30s,
+  // even when renderDevices() re-runs (e.g. after switching the primary device).
+  const DEVICE_STATUS_TTL_MS = 30000;
+  const deviceStatusCache = {}; // deviceId -> { ts, battery, storage, network }
+
   async function loadDeviceStatus(id, statusEl) {
     if (!id) { statusEl.textContent = '—'; return; }
+    const now = Date.now();
+    const cached = deviceStatusCache[id];
+    if (cached && (now - cached.ts) < DEVICE_STATUS_TTL_MS) {
+      renderDeviceStatus(statusEl, cached.battery, cached.storage, cached.network);
+      return;
+    }
     let battery = null, storage = null, network = null;
     try {
       [battery, storage, network] = await Promise.all([
@@ -2445,6 +2482,11 @@
         safeCommand('network', id, { log: false }),
       ]);
     } catch (err) { /* ignore */ }
+    deviceStatusCache[id] = { ts: now, battery, storage, network };
+    renderDeviceStatus(statusEl, battery, storage, network);
+  }
+
+  function renderDeviceStatus(statusEl, battery, storage, network) {
     statusEl.innerHTML = '';
     statusEl.appendChild(el('span', 'device-card__stat', '🔋 ' + (battery ? summarizeBattery(battery) : '—')));
     statusEl.appendChild(el('span', 'device-card__stat', '💾 ' + (storage ? compact(storage, 18) : '—')));
@@ -3348,6 +3390,12 @@
   const recentNotifs = [];
   let notifStreamActive = false;
   let notifReconnectTimer = null;
+  // Exponential backoff for reconnects: 2s → 4s → 8s → … capped at 30s, reset on a
+  // successful open. A half-open fetch() is aborted after 15s so it can't hang forever.
+  const NOTIF_BACKOFF_INITIAL_MS = 2000;
+  const NOTIF_BACKOFF_MAX_MS = 30000;
+  const NOTIF_CONNECT_TIMEOUT_MS = 15000;
+  let notifBackoffMs = NOTIF_BACKOFF_INITIAL_MS;
 
   function updateNotifBadge() {
     if (!notifBadge) return;
@@ -3389,11 +3437,12 @@
 
   function scheduleNotifReconnect() {
     if (notifReconnectTimer) return;
+    const delay = notifBackoffMs;
     notifReconnectTimer = setTimeout(() => {
       notifReconnectTimer = null;
       if (document.visibilityState === 'visible') connectNotifStream();
       else scheduleNotifReconnect();
-    }, 10000);
+    }, delay);
   }
 
   async function connectNotifStream() {
@@ -3404,27 +3453,37 @@
     if (selectedDeviceId) qs.set('device_id', selectedDeviceId);
     const url = BACKEND_NOTIF_URL + (qs.toString() ? '?' + qs.toString() : '');
 
+    // Abort a half-open connection after 15s so fetch() can't hang forever.
+    const controller = new AbortController();
+    const connectTimeout = setTimeout(() => controller.abort(), NOTIF_CONNECT_TIMEOUT_MS);
+
     let res;
     try {
       res = await fetch(url, {
         headers: { 'X-Web-Key': agentWebKey(), 'Accept': 'text/event-stream' },
         cache: 'no-store',
+        signal: controller.signal,
       });
     } catch (err) {
+      clearTimeout(connectTimeout);
       notifStreamActive = false;
       setNotifState('offline');
+      notifBackoffMs = Math.min(notifBackoffMs * 2, NOTIF_BACKOFF_MAX_MS);
       scheduleNotifReconnect();
       return;
     }
+    clearTimeout(connectTimeout);
 
     if (!res.ok || !res.body || typeof res.body.getReader !== 'function') {
       notifStreamActive = false;
       setNotifState('offline');
+      notifBackoffMs = Math.min(notifBackoffMs * 2, NOTIF_BACKOFF_MAX_MS);
       scheduleNotifReconnect();
       return;
     }
 
     setNotifState('online');
+    notifBackoffMs = NOTIF_BACKOFF_INITIAL_MS; // reset backoff on a successful open
     const reader = res.body.getReader();
     const decoder = new TextDecoder('utf-8');
     let buffer = '';
@@ -3449,6 +3508,7 @@
       try { reader.cancel(); } catch (err) { /* ignore */ }
       notifStreamActive = false;
       setNotifState('offline');
+      notifBackoffMs = Math.min(notifBackoffMs * 2, NOTIF_BACKOFF_MAX_MS);
       scheduleNotifReconnect();
     }
   }
