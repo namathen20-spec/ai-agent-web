@@ -540,16 +540,147 @@ html, body {
 
 /* ---- Live streaming tiles (WebRTC camera / mic) ---- */
 .live { display: flex; flex-direction: column; gap: 12px; }
+
+/* 3D glass stage — perspective lives on the outer layer so the inner card can
+   tilt freely without affecting the tile grid layout. */
+.live__stage {
+  position: relative;
+  perspective: 900px;
+}
+
+.live__card {
+  position: relative;
+  transform-style: preserve-3d;
+  transition: transform 0.22s var(--ease-out);
+  will-change: transform;
+}
+
 .live__video {
   display: block;
   width: 100%;
   max-height: 46vh;
   min-height: 200px;
   background: #000;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border-soft);
-  box-shadow: var(--shadow-soft);
+  border-radius: var(--radius);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--shadow-soft), inset 0 1px 0 rgba(255, 255, 255, 0.06);
   object-fit: contain;
+}
+
+/* soft glass sheen highlight along the top edge of the card */
+.live__card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius);
+  pointer-events: none;
+  z-index: 2;
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.10), rgba(255, 255, 255, 0) 42%);
+}
+
+/* pulsing glow/ring — shown only while a stream is live */
+.live__card::after {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  border-radius: calc(var(--radius) + 3px);
+  pointer-events: none;
+  z-index: 1;
+  border: 1px solid transparent;
+  opacity: 0;
+  transition: opacity 0.35s ease;
+}
+.live--streaming .live__card::after {
+  border-color: rgba(79, 140, 255, 0.55);
+  opacity: 1;
+  animation: livePulse 1.8s ease-in-out infinite;
+}
+@keyframes livePulse {
+  0%   { box-shadow: 0 0 0 0 rgba(79, 140, 255, 0.45); }
+  70%  { box-shadow: 0 0 0 14px rgba(79, 140, 255, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(79, 140, 255, 0); }
+}
+
+/* floating glass speaker + volume bar */
+.live__controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 2px auto 0;
+  padding: 10px 14px;
+  border-radius: 999px;
+  background: var(--glass-bg-strong);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--shadow-soft), var(--glass-inner);
+}
+
+.live-ctl {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  font-size: 17px;
+  line-height: 1;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  color: var(--text);
+  cursor: pointer;
+  transition: transform 0.14s ease, background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+}
+.live-ctl:hover { transform: translateY(-2px); background: var(--panel-2-hover); }
+.live-ctl:active { transform: translateY(0) scale(0.92); }
+.live-ctl--muted { border-color: rgba(255, 107, 107, 0.5); color: var(--danger); }
+
+.live-vol {
+  flex: 1 1 120px;
+  min-width: 90px;
+  max-width: 220px;
+  height: 4px;
+  appearance: none;
+  -webkit-appearance: none;
+  background: linear-gradient(90deg, var(--accent), var(--violet));
+  border-radius: 999px;
+  outline: none;
+  cursor: pointer;
+}
+.live-vol::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid var(--accent);
+  box-shadow: 0 0 0 4px rgba(79, 140, 255, 0.2);
+}
+.live-vol::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid var(--accent);
+  box-shadow: 0 0 0 4px rgba(79, 140, 255, 0.2);
+}
+.live-vol::-moz-range-track {
+  height: 4px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--accent), var(--violet));
+}
+
+.live-vol-label {
+  min-width: 38px;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent-2);
 }
 
 .result-dl {

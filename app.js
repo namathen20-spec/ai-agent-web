@@ -2931,7 +2931,19 @@
     try { if (s.timer) clearInterval(s.timer); } catch (err) { /* ignore */ }
     try { if (s.ws) { s.ws.send(JSON.stringify({ type: 'stop' })); s.ws.close(1000, 'stop'); } } catch (err) { /* ignore */ }
     try { if (s.pc) s.pc.close(); } catch (err) { /* ignore */ }
-    try { if (s.video) s.video.srcObject = null; } catch (err) { /* ignore */ }
+    try {
+      if (s.video) {
+        const box = s.video.closest ? s.video.closest('.live') : null;
+        if (box) box.classList.remove('live--streaming');
+        const stage = s.video.closest ? s.video.closest('.live__stage') : null;
+        if (stage) {
+          const card = stage.querySelector('.live__card');
+          if (card) card.style.transform = '';
+        }
+        s.video.style.transform = '';
+        s.video.srcObject = null;
+      }
+    } catch (err) { /* ignore */ }
     // Also tell the relay (command channel) to stop the phone-side live source.
     try {
       const stopCmd = s.mode === 'audio' ? 'live_audio stop' : 'live_camera stop';
@@ -2944,6 +2956,8 @@
   // blocked, surface a "tap to unmute" affordance instead of claiming streaming.
   function setLiveStreamPlaying(video, remoteStream, status, isVideo, s) {
     if (video.srcObject !== remoteStream) video.srcObject = remoteStream;
+    const box = video && video.closest ? video.closest('.live') : null;
+    if (box) box.classList.add('live--streaming');
     const attempt = video.play();
     if (attempt && typeof attempt.catch === 'function') {
       attempt.then(() => {
@@ -3019,6 +3033,17 @@
       box.appendChild(lensRow);
     }
 
+    // Remote <video>: starts muted for the autoplay policy; the speaker/volume
+    // controls below own mute + volume so the player is user-controllable.
+    const video = el('video', 'live__video');
+    video.muted = true;
+    video.autoplay = true;
+    video.playsInline = true;
+    video.setAttribute('playsinline', '');
+    video.setAttribute('autoplay', '');
+    try { video.volume = 0.8; } catch (err) { /* ignore */ }
+    if (!isVideo) video.style.display = 'none'; // audio-only: hidden player
+
     const startBtn = makeButton(isVideo ? '▶ Start camera' : '▶ Start mic',
       () => startLive(mode, video, status, startBtn, lens), 'tc-btn tc-btn--primary');
     const stopBtn = makeButton('⏹ Stop', () => {
@@ -3029,21 +3054,140 @@
     btnRow.appendChild(startBtn);
     btnRow.appendChild(stopBtn);
 
-    const video = el('video', 'live__video');
-    video.muted = true;            // start muted to pass autoplay; unmute on play success
-    video.autoplay = true;
-    video.playsInline = true;
-    video.setAttribute('playsinline', '');
-    video.setAttribute('autoplay', '');
-    if (!isVideo) video.style.display = 'none'; // audio-only: hidden player
-
+    // 3D glass stage wraps the video (camera only) so the tilt/glow lives on a
+    // dedicated card layer and never disturbs the tile grid layout.
     const mediaWrap = el('div', 'result-media');
-    mediaWrap.appendChild(video);
+    if (isVideo) {
+      const stage = el('div', 'live__stage');
+      const card = el('div', 'live__card');
+      card.appendChild(video);
+      stage.appendChild(card);
+      mediaWrap.appendChild(stage);
+      enableLiveTilt(stage);
+    } else {
+      mediaWrap.appendChild(video); // audio-only: hidden player, controls only
+    }
+
+    const controls = buildLiveAudioControls(video);
 
     box.appendChild(btnRow);
     box.appendChild(status);
     box.appendChild(mediaWrap);
+    box.appendChild(controls);
     scope.result.appendChild(box);
+  }
+
+  // Floating glass speaker + volume bar. Owns the <video> mute/volume state so
+  // the Autoplay "start muted" behavior and the user controls stay in sync.
+  // The native `volumechange` event fires on BOTH volume and muted changes, so
+  // it also picks up the existing "tap to unmute" hint path (video.muted=false).
+  function buildLiveAudioControls(video) {
+    const bar = el('div', 'live__controls');
+
+    const speaker = makeButton('🔇', () => toggleSpeaker(), 'live-ctl live-ctl--muted');
+    speaker.title = 'Unmute speaker';
+    speaker.setAttribute('aria-label', 'Toggle speaker');
+    speaker.setAttribute('aria-pressed', 'true');
+
+    const volDown = makeButton('➖', () => stepVolume(-10), 'live-ctl');
+    volDown.title = 'Volume down';
+    volDown.setAttribute('aria-label', 'Volume down');
+
+    const volUp = makeButton('➕', () => stepVolume(10), 'live-ctl');
+    volUp.title = 'Volume up';
+    volUp.setAttribute('aria-label', 'Volume up');
+
+    const vol = el('input', 'live-vol');
+    vol.type = 'range';
+    vol.min = '0';
+    vol.max = '100';
+    vol.step = '1';
+    vol.value = '80';
+    vol.title = 'Volume';
+    vol.setAttribute('aria-label', 'Volume');
+
+    const label = el('span', 'live-vol-label', '80%');
+
+    let lastVol = 80; // remembered non-zero volume, used to restore on unmute
+
+    function syncFromVideo() {
+      const muted = !!video.muted;
+      speaker.textContent = muted ? '🔇' : '🔊';
+      speaker.title = muted ? 'Unmute speaker' : 'Mute speaker';
+      speaker.classList.toggle('live-ctl--muted', muted);
+      speaker.setAttribute('aria-pressed', muted ? 'true' : 'false');
+      const pct = Math.round((video.volume || 0) * 100);
+      if (vol.value !== String(pct)) vol.value = String(pct);
+      if (pct > 0) lastVol = pct;
+      label.textContent = pct + '%';
+    }
+
+    function applyVol(n) {
+      n = Math.max(0, Math.min(100, n));
+      const v = n / 100;
+      try {
+        video.volume = v;
+        if (v === 0) video.muted = true;             // 0 volume ⇒ effectively muted
+        else if (video.muted) video.muted = false;   // raising volume unmutes
+      } catch (err) { /* ignore */ }
+      // `volumechange` re-syncs the icon + label + slider for us.
+    }
+
+    function toggleSpeaker() {
+      try {
+        if (video.muted) video.volume = (lastVol || 60) / 100; // restore before unmute
+        video.muted = !video.muted;
+      } catch (err) { /* ignore */ }
+    }
+
+    function stepVolume(d) {
+      let n = parseInt(vol.value, 10);
+      if (!Number.isFinite(n)) n = lastVol;
+      applyVol(n + d);
+    }
+
+    vol.addEventListener('input', () => applyVol(parseInt(vol.value, 10) || 0));
+    video.addEventListener('volumechange', syncFromVideo);
+
+    bar.appendChild(speaker);
+    bar.appendChild(volDown);
+    bar.appendChild(vol);
+    bar.appendChild(volUp);
+    bar.appendChild(label);
+
+    syncFromVideo();
+    return bar;
+  }
+
+  // 3D tilt for the live stage: rotateX/rotateY follow the pointer inside the
+  // CSS `perspective`, resting flat again on leave. Disabled for reduced motion.
+  function enableLiveTilt(stage) {
+    if (prefersReducedMotion()) return;
+    const card = stage.querySelector('.live__card');
+    if (!card) return;
+
+    let raf = 0;
+    const set = (rx, ry) => {
+      if (raf) cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        card.style.transform = 'rotateX(' + rx + 'deg) rotateY(' + ry + 'deg)';
+      });
+    };
+    const reset = () => {
+      if (raf) cancelAnimationFrame(raf);
+      card.style.transform = '';
+    };
+
+    stage.addEventListener('pointermove', (e) => {
+      const r = stage.getBoundingClientRect();
+      if (!r.width || !r.height) return;
+      const px = (e.clientX - r.left) / r.width;
+      const py = (e.clientY - r.top) / r.height;
+      const rx = ((0.5 - py) * 8).toFixed(2); // tilt up/down (±4deg)
+      const ry = ((px - 0.5) * 10).toFixed(2); // tilt left/right (±5deg)
+      set(rx, ry);
+    });
+    stage.addEventListener('pointerleave', reset);
   }
 
   async function startLive(mode, video, status, startBtn, lens) {
