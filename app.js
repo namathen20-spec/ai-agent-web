@@ -3057,6 +3057,7 @@
     // 3D glass stage wraps the video (camera only) so the tilt/glow lives on a
     // dedicated card layer and never disturbs the tile grid layout.
     const mediaWrap = el('div', 'result-media');
+    let fullscreenEl = null;
     if (isVideo) {
       const stage = el('div', 'live__stage');
       const card = el('div', 'live__card');
@@ -3064,16 +3065,20 @@
       stage.appendChild(card);
       mediaWrap.appendChild(stage);
       enableLiveTilt(stage);
+      fullscreenEl = stage; // fullscreen targets the whole stage (video + controls)
     } else {
       mediaWrap.appendChild(video); // audio-only: hidden player, controls only
     }
 
-    const controls = buildLiveAudioControls(video);
+    const controls = buildLiveAudioControls(video, fullscreenEl);
 
     box.appendChild(btnRow);
     box.appendChild(status);
     box.appendChild(mediaWrap);
-    box.appendChild(controls);
+    // Video: keep controls inside the stage so they overlay in fullscreen.
+    // Audio: no stage, so controls simply follow the (hidden) player.
+    if (fullscreenEl) fullscreenEl.appendChild(controls);
+    else box.appendChild(controls);
     scope.result.appendChild(box);
   }
 
@@ -3081,7 +3086,7 @@
   // the Autoplay "start muted" behavior and the user controls stay in sync.
   // The native `volumechange` event fires on BOTH volume and muted changes, so
   // it also picks up the existing "tap to unmute" hint path (video.muted=false).
-  function buildLiveAudioControls(video) {
+  function buildLiveAudioControls(video, fullscreenEl) {
     const bar = el('div', 'live__controls');
 
     const speaker = makeButton('🔇', () => toggleSpeaker(), 'live-ctl live-ctl--muted');
@@ -3154,6 +3159,85 @@
     bar.appendChild(vol);
     bar.appendChild(volUp);
     bar.appendChild(label);
+
+    // Fullscreen toggle (video mode only) — expands the live stage to fill the
+    // screen; the same button exits. Uses the standard Fullscreen API with
+    // webkit/ms fallbacks and listens to `fullscreenchange` so Esc / browser UI
+    // stay in sync. In fullscreen the controls overlay the feed and auto-hide
+    // after a moment of inactivity, reappearing on pointer movement.
+    let fsBtn = null;
+    let fsActive = false;
+    let hideTimer = 0;
+
+    function isFsActive() {
+      return !!(document.fullscreenElement ||
+        document.webkitFullscreenElement ||
+        document.msFullscreenElement);
+    }
+
+    function revealControls() {
+      if (!fullscreenEl) return;
+      bar.classList.remove('is-hidden');
+      window.clearTimeout(hideTimer);
+      if (fsActive) {
+        hideTimer = window.setTimeout(() => {
+          if (isFsActive()) bar.classList.add('is-hidden');
+        }, 2600);
+      }
+    }
+
+    function syncFs() {
+      fsActive = isFsActive();
+      if (fsBtn) {
+        fsBtn.textContent = fsActive ? '🗕' : '⛶';
+        fsBtn.title = fsActive ? 'Exit fullscreen' : 'Expand to fullscreen (⛶)';
+        fsBtn.setAttribute('aria-label', fsBtn.title);
+        fsBtn.setAttribute('aria-pressed', fsActive ? 'true' : 'false');
+      }
+      if (fsActive) revealControls();
+      else {
+        window.clearTimeout(hideTimer);
+        bar.classList.remove('is-hidden');
+      }
+    }
+
+    function requestFs() {
+      if (!fullscreenEl) return;
+      let p = null;
+      try {
+        if (fullscreenEl.requestFullscreen) p = fullscreenEl.requestFullscreen();
+        else if (fullscreenEl.webkitRequestFullscreen) p = fullscreenEl.webkitRequestFullscreen();
+        else if (fullscreenEl.msRequestFullscreen) p = fullscreenEl.msRequestFullscreen();
+      } catch (err) { /* ignore */ }
+      if (p && typeof p.catch === 'function') p.catch(() => {}); // user denied / unsupported
+    }
+
+    function exitFs() {
+      let p = null;
+      try {
+        if (document.exitFullscreen) p = document.exitFullscreen();
+        else if (document.webkitExitFullscreen) p = document.webkitExitFullscreen();
+        else if (document.msExitFullscreen) p = document.msExitFullscreen();
+      } catch (err) { /* ignore */ }
+      if (p && typeof p.catch === 'function') p.catch(() => {});
+    }
+
+    if (fullscreenEl) {
+      fsBtn = makeButton('⛶', () => {
+        try { isFsActive() ? exitFs() : requestFs(); } catch (err) { /* ignore */ }
+      }, 'live-ctl live-ctl--fs');
+      fsBtn.title = 'Expand to fullscreen (⛶)';
+      fsBtn.setAttribute('aria-label', fsBtn.title);
+      fsBtn.setAttribute('aria-pressed', 'false');
+      bar.appendChild(fsBtn);
+
+      document.addEventListener('fullscreenchange', syncFs);
+      document.addEventListener('webkitfullscreenchange', syncFs);
+      document.addEventListener('msfullscreenchange', syncFs);
+      fullscreenEl.addEventListener('pointermove', revealControls);
+      fullscreenEl.addEventListener('pointerdown', revealControls);
+      bar.addEventListener('pointerenter', revealControls);
+    }
 
     syncFromVideo();
     return bar;
