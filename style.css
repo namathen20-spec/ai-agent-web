@@ -1293,3 +1293,46 @@ select {
   color: #fff; background: var(--accent-grad);
   padding: 2px 8px; border-radius: 999px; white-space: nowrap;
 }
+
+/* =====================================================================
+   File manager view (📁 Files tile)
+   ===================================================================== */
+.fm { display: flex; flex-direction: column; gap: 12px; }
+.fm__head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.fm__back { padding: 7px 12px; font-size: 12.5px; }
+.fm__path {
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  font-size: 12.5px; color: var(--accent-2);
+  background: var(--chip-bg); border: 1px solid var(--chip-border);
+  padding: 4px 10px; border-radius: 999px;
+  word-break: break-all; flex: 1; min-width: 0;
+}
+.fm__list { display: flex; flex-direction: column; gap: 6px; }
+.fm__row {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  width: 100%;
+  padding: 11px 14px;
+  background: var(--panel-2);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: 14px; font-weight: 600;
+  cursor: pointer; text-align: left; font-family: inherit;
+  transition: background 0.16s ease, border-color 0.16s ease, transform 0.16s ease;
+}
+.fm__row:hover { background: var(--panel-2-hover); border-color: var(--border-hover); transform: translateY(-1px); }
+.fm__name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fm__size { color: var(--text-faint); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.fm__error {
+  color: #ff8f8f;
+  padding: 12px 14px;
+  background: rgba(255, 107, 107, 0.08);
+  border: 1px solid rgba(255, 107, 107, 0.25);
+  border-radius: var(--radius-sm); font-size: 13px; word-break: break-word;
+}
+.fm__meta { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 12.5px; color: var(--text-dim); }
+.fm__filename { font-weight: 700; color: var(--text); word-break: break-all; }
+.fm__dl { display: flex; }
+.fm__img { max-width: 100%; max-height: 60vh; object-fit: contain; border-radius: var(--radius-sm); background: var(--panel-2); }
+.fm__media { max-width: 100%; border-radius: var(--radius-sm); }
+.fm__pre { margin: 0; max-height: 55vh; overflow: auto; white-space: pre-wrap; word-break: break-word; }

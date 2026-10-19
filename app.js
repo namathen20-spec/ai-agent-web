@@ -44,7 +44,7 @@
     { cat: '📷 Camera', tools: 'camera, photo, cam, screenshot, screen_touch, screen_record' },
     { cat: '💬 Messaging', tools: 'read_sms, send_sms, read_call_log, find_contact, dial_number' },
     { cat: '📱 Device', tools: 'battery, storage, network, phone_info, gps_on' },
-    { cat: '📂 Files & Media', tools: 'file_get, file_put, record_audio, camera_link, screenshot_link' },
+    { cat: '📂 Files & Media', tools: 'listdir, file_get, file_put, record_audio, camera_link, screenshot_link' },
     { cat: '📜 Activity', tools: 'touch_feed, notifications, life_log_*' },
     { cat: '🖥️ Screen', tools: 'live_start, live_stop, tap_screen, phone_echo' },
   ];
@@ -167,49 +167,76 @@
       },
     },
     {
-      id: 'contacts', emoji: '👤', label: 'Contacts', sub: 'Search contacts', color: '#8b5cf6',
+      id: 'contacts', emoji: '👤', label: 'Contacts', sub: 'All contacts + search', color: '#8b5cf6',
       build(scope) {
-        const name = makeInput('text', 'Name to search', '');
-        scope.controls.appendChild(makeField('Name', name));
+        const search = makeInput('text', 'Filter by name or number', '');
+        scope.controls.appendChild(makeField('Search', search));
         scope.controls.appendChild(
-          makeButton('🔍 Find', () => {
-            const q = name.value.trim();
+          makeButton('📖 Show contacts', () => showAllContacts(scope), 'tc-btn tc-btn--primary')
+        );
+        scope.controls.appendChild(
+          makeButton('🔍 Find on phone', () => {
+            const q = search.value.trim();
             if (!q) { toast('Enter a contact name to search'); return; }
             scope.run('findcontact ' + q);
-          }, 'tc-btn tc-btn--primary')
+          }, 'tc-btn')
         );
+        // Client-side filter over the loaded list (live, no extra relay round-trip).
+        search.addEventListener('input', () => {
+          if (contactsCache.length || scope.result.querySelector('.contacts-list')) {
+            renderContactList(scope, contactsCache, search.value);
+          }
+        });
       },
     },
     {
-      id: 'files', emoji: '📁', label: 'Files', sub: 'Get / put files', color: '#f2b13c',
+      id: 'files', emoji: '📁', label: 'Files', sub: 'Browse phone storage', color: '#f2b13c',
       build(scope) {
-        const gLabel = el('span', 'tool-controls__label', 'Download from phone (get)');
-        const gPath = makeInput('text', '/sdcard/Download/file.txt', '');
-        scope.controls.appendChild(gLabel);
-        scope.controls.appendChild(makeField('Path', gPath));
-        scope.controls.appendChild(
-          makeButton('⬇ Get', () => {
-            const p = gPath.value.trim();
-            if (!p) { toast('Enter a file path'); return; }
-            scope.run('file_get ' + p);
-          }, 'tc-btn')
-        );
+        // --- toolbar (rendered into the controls area) ---
+        scope.controls.appendChild(el('span', 'tool-controls__label', 'Folder path'));
+        const pathInput = makeInput('text', '/sdcard/', '/sdcard/');
+        scope.controls.appendChild(makeField('Path', pathInput));
+        const btnRow = el('div', 'seg');
+        const homeBtn = makeButton('🏠 Home', () => nav('/sdcard/'), 'tc-btn');
+        const upBtn = makeButton('⬆ Up', () => nav(fmParent(fmCleanPath(pathInput.value))), 'tc-btn');
+        const goBtn = makeButton('Go', () => nav(pathInput.value), 'tc-btn tc-btn--primary');
+        btnRow.appendChild(homeBtn);
+        btnRow.appendChild(upBtn);
+        btnRow.appendChild(goBtn);
+        scope.controls.appendChild(btnRow);
 
-        const pLabel = el('span', 'tool-controls__label', 'Upload to phone (put)');
-        const pPath = makeInput('text', '/sdcard/Download/file.txt', '');
-        const pContent = el('textarea');
-        pContent.placeholder = 'File content…';
-        pContent.rows = 2;
-        scope.controls.appendChild(pLabel);
-        scope.controls.appendChild(makeField('Path', pPath));
-        scope.controls.appendChild(makeField('Content', pContent));
-        scope.controls.appendChild(
-          makeButton('⬆ Put', () => {
-            const path = pPath.value.trim();
-            if (!path) { toast('Enter a destination path'); return; }
-            scope.run('file_put ' + path + ' ' + utf8ToBase64(pContent.value));
-          }, 'tc-btn')
-        );
+        // --- listing / file view (rendered into the result area) ---
+        const listEl = el('div', 'fm');
+        scope.result.appendChild(listEl);
+
+        let busy = false;
+
+        async function nav(path) {
+          const p = fmCleanPath(path);
+          if (!p) { toast('Enter a valid folder path'); return; }
+          if (busy) return;
+          pathInput.value = p;
+          busy = true;
+          listEl.innerHTML = '';
+          listEl.appendChild(el('div', 'result-loading', 'Loading ' + p + '…'));
+          let raw = null;
+          try { raw = await safeCommand('listdir ' + p); } catch (err) { raw = null; }
+          busy = false;
+          renderFileDir(listEl, p, raw, nav, openFile);
+        }
+
+        async function openFile(fullPath, name) {
+          if (busy) return;
+          busy = true;
+          listEl.innerHTML = '';
+          listEl.appendChild(el('div', 'result-loading', 'Downloading ' + name + '…'));
+          let raw = null;
+          try { raw = await safeCommand('file_get ' + fullPath); } catch (err) { raw = null; }
+          busy = false;
+          renderFileContent(listEl, fullPath, name, raw, () => nav(fmParent(fullPath)));
+        }
+
+        nav('/sdcard/');
       },
     },
     {
@@ -1785,6 +1812,272 @@
   }
 
   // ---------------------------------------------------------------------------
+  // File manager (📁 Files tile) — browse phone folders via `listdir` and
+  // fetch files via `file_get`. All rendering is textContent/createElement based
+  // (no innerHTML with untrusted file names/content) to keep the XSS invariant.
+  // ---------------------------------------------------------------------------
+
+  function fmCleanPath(path) {
+    return String(path == null ? '' : path).trim();
+  }
+
+  // Parent directory of a path ("" or "/" stay at root; no ".." escape needed).
+  function fmParent(path) {
+    let p = String(path == null ? '' : path).replace(/\/+$/, '');
+    if (!p || p === '/') return '/';
+    const i = p.lastIndexOf('/');
+    if (i <= 0) return '/';
+    return p.slice(0, i);
+  }
+
+  function fmJoin(dir, name) {
+    const d = String(dir == null ? '' : dir);
+    return d.endsWith('/') ? d + name : d + '/' + name;
+  }
+
+  function fmSize(bytes) {
+    const n = Number(bytes);
+    if (!Number.isFinite(n) || n < 0) return '';
+    if (n < 1024) return n + ' B';
+    const units = ['KB', 'MB', 'GB', 'TB'];
+    let v = n, u = -1;
+    do { v /= 1024; u++; } while (v >= 1024 && u < units.length - 1);
+    return v.toFixed(v >= 100 ? 0 : 1) + ' ' + units[u];
+  }
+
+  function fmBase64ToBytes(b64) {
+    const s = String(b64 == null ? '' : b64).replace(/[\s\r\n]+/g, '');
+    const bin = atob(s);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return bytes;
+  }
+
+  // Heuristic: treat as text when the sampled bytes are overwhelmingly printable.
+  function fmIsText(bytes) {
+    const sample = bytes.subarray(0, 8192);
+    if (!sample.length) return true;
+    let printable = 0;
+    for (let i = 0; i < sample.length; i++) {
+      const b = sample[i];
+      if (b === 9 || b === 10 || b === 13 || (b >= 32 && b < 127) || b >= 160) printable++;
+    }
+    return printable / sample.length > 0.92;
+  }
+
+  function fmMime(bytes, name) {
+    const n = String(name == null ? '' : name).toLowerCase();
+    const ext = n.includes('.') ? n.slice(n.lastIndexOf('.') + 1) : '';
+    const byExt = {
+      jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif',
+      webp: 'image/webp', bmp: 'image/bmp', svg: 'image/svg+xml',
+      mp3: 'audio/mpeg', wav: 'audio/wav', ogg: 'audio/ogg', m4a: 'audio/mp4', aac: 'audio/aac',
+      mp4: 'video/mp4', webm: 'video/webm', mov: 'video/quicktime', mkv: 'video/x-matroska', '3gp': 'video/3gpp',
+    };
+    if (byExt[ext]) return byExt[ext];
+    // Magic-byte sniff as a fallback.
+    if (bytes[0] === 0xff && bytes[1] === 0xd8) return 'image/jpeg';
+    if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) return 'image/png';
+    if (bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46) return 'image/gif';
+    if (bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46) return 'image/webp';
+    return fmIsText(bytes) ? 'text/plain' : 'application/octet-stream';
+  }
+
+  // Render a directory listing into `container`. `raw` is the listdir JSON string
+  // (or a phone error string). `nav`/`openFile` are the callbacks from the tile.
+  function renderFileDir(container, path, raw, nav, openFile) {
+    container.innerHTML = '';
+    container.classList.add('fm');
+
+    const head = el('div', 'fm__head');
+    head.appendChild(el('div', 'fm__path', path));
+    container.appendChild(head);
+
+    let entries = null;
+    if (raw != null) {
+      try { entries = JSON.parse(String(raw).trim()); } catch (err) { entries = null; }
+    }
+
+    if (!Array.isArray(entries)) {
+      container.appendChild(el('div', 'fm__error', '⚠️ ' + String(raw == null ? 'No response from phone' : raw)));
+      return;
+    }
+    if (!entries.length) {
+      container.appendChild(el('div', 'hint', '📂 This folder is empty.'));
+      return;
+    }
+
+    const list = el('div', 'fm__list');
+    entries.forEach((it) => {
+      const name = it && it.name != null ? String(it.name) : '';
+      const isDir = !!(it && it.isDir);
+      const size = it && it.size != null ? Number(it.size) : 0;
+      const fullPath = fmJoin(path, name);
+
+      const row = el('button', 'fm__row');
+      row.type = 'button';
+      row.title = fullPath;
+      row.appendChild(el('span', 'fm__name', (isDir ? '📁 ' : '📄 ') + (name || fullPath)));
+      if (!isDir) row.appendChild(el('span', 'fm__size', fmSize(size)));
+      row.addEventListener('click', () => (isDir ? nav(fullPath) : openFile(fullPath, name)));
+      list.appendChild(row);
+    });
+    container.appendChild(list);
+  }
+
+  // Render a fetched file (download + inline view for text / images / audio/video).
+  function renderFileContent(container, fullPath, name, raw, back) {
+    container.innerHTML = '';
+    container.classList.add('fm');
+
+    const head = el('div', 'fm__head');
+    head.appendChild(makeButton('↩ Back', () => back(), 'tc-btn fm__back'));
+    head.appendChild(el('div', 'fm__path', fullPath));
+    container.appendChild(head);
+
+    const text = String(raw == null ? '' : raw).trim();
+
+    // Relay returned a media URL (camera-style) rather than base64 — delegate.
+    if (/^MEDIA_LINK:/i.test(text)) {
+      renderToolResult(container, text, 'auto');
+      return;
+    }
+
+    let b64 = null;
+    if (/^FILE_B64:/i.test(text)) b64 = text.replace(/^FILE_B64:\s*/i, '').replace(/\s+/g, '');
+    if (!b64) {
+      container.appendChild(el('div', 'fm__error', '⚠️ ' + (text || 'Could not read file.')));
+      return;
+    }
+
+    let bytes;
+    try { bytes = fmBase64ToBytes(b64); } catch (err) {
+      container.appendChild(el('div', 'fm__error', '⚠️ Could not decode file data (invalid base64).'));
+      return;
+    }
+
+    const mime = fmMime(bytes, name);
+    const meta = el('div', 'fm__meta');
+    meta.appendChild(el('span', 'fm__filename', name || fullPath));
+    meta.appendChild(el('span', 'fm__size', fmSize(bytes.length) + ' · ' + mime));
+    container.appendChild(meta);
+
+    const blob = new Blob([bytes], { type: mime });
+    const url = URL.createObjectURL(blob);
+    if (container._fmUrl) { try { URL.revokeObjectURL(container._fmUrl); } catch (err) { /* ignore */ } }
+    container._fmUrl = url;
+
+    const dlWrap = el('div', 'fm__dl');
+    const dl = el('a', 'result-dl', '⬇ Download');
+    dl.href = url;
+    dl.download = name || 'download';
+    dlWrap.appendChild(dl);
+    container.appendChild(dlWrap);
+
+    if (mime.startsWith('image/')) {
+      const img = el('img', 'fm__img');
+      img.alt = name;
+      img.src = url;
+      container.appendChild(img);
+    } else if (mime.startsWith('audio/') || mime.startsWith('video/')) {
+      const mv = el(mime.startsWith('video/') ? 'video' : 'audio', 'fm__media');
+      mv.controls = true;
+      if (mv.tagName === 'VIDEO') mv.playsInline = true;
+      mv.src = url;
+      container.appendChild(mv);
+    } else if (mime === 'text/plain' || mime.startsWith('text/') || fmIsText(bytes)) {
+      let content = '';
+      try { content = new TextDecoder('utf-8').decode(bytes); } catch (err) { content = ''; }
+      const MAX_TXT = 256 * 1024;
+      if (content.length > MAX_TXT) content = content.slice(0, MAX_TXT) + '\n…[truncated]';
+      const pre = el('pre', 'result-pre fm__pre');
+      pre.textContent = content || '(empty file)';
+      container.appendChild(pre);
+    } else {
+      container.appendChild(el('div', 'hint', 'Binary file — use ⬇ Download above to save it.'));
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Contacts — list-all + client-side filter ("Show contacts" tile).
+  // The phone returns "N contacts:" followed by "Name: Number" lines; we parse
+  // that into {name, number} rows and render it as a scrollable list. Rendering
+  // is textContent-based (never innerHTML) so contact data can't inject markup.
+  // ---------------------------------------------------------------------------
+  let contactsCache = [];
+
+  function parseContacts(raw) {
+    const rows = [];
+    String(raw == null ? '' : raw).split(/\r?\n/).forEach((line) => {
+      const t = (line || '').trim();
+      if (!t) return;
+      if (/^\d+\s+contacts?:/i.test(t)) return; // "N contacts:" header line
+      const idx = t.indexOf(':');
+      if (idx <= 0) return;
+      rows.push({ name: t.slice(0, idx).trim(), number: t.slice(idx + 1).trim() });
+    });
+    return rows;
+  }
+
+  function renderContactList(scope, contacts, filter) {
+    const out = scope.result;
+    out.innerHTML = '';
+    const q = (filter == null ? '' : String(filter)).trim().toLowerCase();
+    const filtered = q
+      ? contacts.filter((c) =>
+          c.name.toLowerCase().indexOf(q) !== -1 ||
+          c.number.toLowerCase().indexOf(q) !== -1)
+      : contacts;
+
+    out.appendChild(el('div', 'hint',
+      contacts.length + (contacts.length === 1 ? ' contact' : ' contacts') +
+      (q ? ' · ' + filtered.length + ' matching' : '')));
+
+    const list = el('div', 'contacts-list');
+    list.style.maxHeight = '60vh';
+    list.style.overflowY = 'auto';
+    list.style.marginTop = '8px';
+    if (!filtered.length) {
+      list.appendChild(el('div', 'hint', q ? 'No matches for "' + String(filter).trim() + '"' : 'No contacts — check READ_CONTACTS permission'));
+      out.appendChild(list);
+      return;
+    }
+    filtered.forEach((c) => {
+      const row = el('div', 'contacts-row');
+      row.style.display = 'flex';
+      row.style.justifyContent = 'space-between';
+      row.style.gap = '12px';
+      row.style.padding = '7px 10px';
+      row.style.borderBottom = '1px solid rgba(127,140,160,0.18)';
+      const name = el('span', 'contacts-name', c.name || '(no name)');
+      name.style.fontWeight = '600';
+      const number = el('span', 'contacts-number', c.number || '');
+      number.style.opacity = '0.82';
+      number.style.whiteSpace = 'nowrap';
+      row.appendChild(name);
+      row.appendChild(number);
+      list.appendChild(row);
+    });
+    out.appendChild(list);
+  }
+
+  async function showAllContacts(scope) {
+    const out = scope.result;
+    out.innerHTML = '';
+    out.appendChild(el('div', 'result-loading', 'Loading contacts…'));
+    try {
+      const data = await postCommand('contacts');
+      const raw = (data && typeof data.result !== 'undefined') ? data.result : '';
+      const contacts = parseContacts(raw);
+      contactsCache = contacts;
+      renderContactList(scope, contacts, '');
+    } catch (err) {
+      out.innerHTML = '';
+      out.appendChild(el('pre', 'result-pre result-error', '⚠️ ' + formatError(err)));
+    }
+  }
+
+  // ---------------------------------------------------------------------------
   // Control Center — tile rendering + open/close + tilt + particles + status bar
   // ---------------------------------------------------------------------------
 
@@ -2525,7 +2818,7 @@
     credential: 'openrelayproject',
   };
 
-  // Active session: { ws, pc, video, timer, negTimer, gotOffer, deviceId, mode } or null.
+  // Active session: { ws, pc, video, timer, negTimer, gotOffer, remoteSet, pendingIce, deviceId, mode } or null.
   let liveStream = null;
   // Start-lock so a double-tap on Start can't orphan a half-open WebRTC session.
   let liveBusy = false;
@@ -2687,7 +2980,7 @@
 
       const pc = new RTCPeerConnection({ iceServers: [{ urls: LIVE_STUN }, LIVE_TURN] });
       const remoteStream = new MediaStream();
-      const s = { ws: null, pc, video, timer: null, negTimer: null, gotOffer: false, deviceId: id, mode: isVideo ? 'camera' : 'audio' };
+      const s = { ws: null, pc, video, timer: null, negTimer: null, gotOffer: false, remoteSet: false, pendingIce: [], deviceId: id, mode: isVideo ? 'camera' : 'audio' };
       liveStream = s;
 
       pc.ontrack = (ev) => {
@@ -2768,6 +3061,12 @@
           s.gotOffer = true;
           try {
             await pc.setRemoteDescription(new RTCSessionDescription(m.sdp));
+            s.remoteSet = true;
+            // Flush any ICE candidates that raced ahead of the remote description.
+            while (s.pendingIce.length) {
+              const c = s.pendingIce.shift();
+              try { await pc.addIceCandidate(c); } catch (err) { /* ignore */ }
+            }
             const answer = await pc.createAnswer();
             await pc.setLocalDescription(answer);
             ws.send(JSON.stringify({ type: 'answer', sdp: { type: 'answer', sdp: answer.sdp } }));
@@ -2776,13 +3075,16 @@
             status.textContent = '⚠️ Negotiation failed: ' + (err && err.message ? err.message : err);
           }
         } else if (type === 'ice' && m.candidate) {
-          try {
-            await pc.addIceCandidate(new RTCIceCandidate({
-              candidate: m.candidate.candidate,
-              sdpMid: m.candidate.sdpMid,
-              sdpMLineIndex: m.candidate.sdpMLineIndex,
-            }));
-          } catch (err) { /* ignore */ }
+          const cand = new RTCIceCandidate({
+            candidate: m.candidate.candidate,
+            sdpMid: m.candidate.sdpMid,
+            sdpMLineIndex: m.candidate.sdpMLineIndex,
+          });
+          if (!s.remoteSet) {
+            s.pendingIce.push(cand); // offer not applied yet — hold the candidate
+          } else {
+            try { await pc.addIceCandidate(cand); } catch (err) { /* ignore */ }
+          }
         }
       };
 
@@ -2855,6 +3157,9 @@
       } else {
         const data = await res.json().catch(() => null);
         points = parseLocationPoints(data);
+        // The relay returns oldest→newest; sort newest-first so the map marker,
+        // iframe, and list lead with the most recent fix.
+        points.sort((a, b) => (Number(b.ts) || 0) - (Number(a.ts) || 0));
       }
     } catch (err) {
       box.innerHTML = '';
