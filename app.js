@@ -876,6 +876,10 @@
         const next = URL.createObjectURL(blob);
         if (img._blobUrl) { try { URL.revokeObjectURL(img._blobUrl); } catch (e) { /* ignore */ } }
         img._blobUrl = next;
+        // Release the object URL as soon as the bytes have been decoded so it
+        // doesn't outlive the <img> for the lifetime of the page.
+        img.onload = () => { try { URL.revokeObjectURL(next); } catch (e) { /* ignore */ } };
+        img.onerror = () => { try { URL.revokeObjectURL(next); } catch (e) { /* ignore */ } };
         img.src = next;
       })
       .catch(() => {
@@ -1609,6 +1613,13 @@
     if (!targetDevice) {
       try { targetDevice = await resolveOnlineTargetId(); } catch (err) { targetDevice = ''; }
     }
+    if (!targetDevice) {
+      // No phone is online — do NOT POST with an empty target. The relay would
+      // park the command in its `_all` queue and execute it up to COMMAND_TIMEOUT_MS
+      // later on a reappearing phone, which hangs the caller and runs a stale
+      // command out of the blue. Fail fast instead.
+      throw errWithKind('network', 'No phone online — command not sent.');
+    }
     const log = !opts || opts.log !== false;
     let data = null;
     let errorDetail = '';
@@ -2263,11 +2274,18 @@
       if (nEl) nEl.textContent = '📶 —';
       return;
     }
-    const [battery, storage, network] = await Promise.all([
-      safeCommand('battery', id, { log: false }),
-      safeCommand('storage', id, { log: false }),
-      safeCommand('network', id, { log: false }),
-    ]);
+    // Serialize: run ONE command at a time so a single command poller is active
+    // instead of three parallel pollers (3× ~90 GET/result per min blew past the
+    // relay's 60/min limit and triggered 429s). Each postCommand blocks until its
+    // own poller resolves, then the next command starts.
+    let battery = null, storage = null, network = null;
+    for (const [cmd, set] of [
+      ['battery', (v) => { battery = v; }],
+      ['storage', (v) => { storage = v; }],
+      ['network', (v) => { network = v; }],
+    ]) {
+      set(await safeCommand(cmd, id, { log: false }));
+    }
     if (bEl) bEl.textContent = battery ? ('🔋 ' + summarizeBattery(battery)) : '🔋 —';
     if (sEl) sEl.textContent = storage ? ('💾 ' + compact(storage, 26)) : '💾 —';
     if (nEl) nEl.textContent = network ? ('📶 ' + compact(network, 22)) : '📶 —';
@@ -2277,7 +2295,7 @@
   // Feature #5 — multi-device dashboard (fetch shared by MCP status + Devices).
   // ---------------------------------------------------------------------------
   async function fetchDevices() {
-    const res = await fetch(BACKEND_DEVICES_URL, { headers: { 'X-Web-Key': agentWebKey() } });
+    const res = await fetchWithTimeout(BACKEND_DEVICES_URL, { headers: { 'X-Web-Key': agentWebKey() } });
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
     return Array.isArray(data.devices) ? data.devices : [];
@@ -2307,6 +2325,22 @@
       });
     }
     if (ccMain) ccMain.scrollTop = 0;
+  }
+
+  // Fetch with a hard timeout so a stalled relay connection can't hang the UI
+  // forever. AbortError is normalized to a plain "unreachable" Error so every
+  // existing `catch` block already surfaces the "relay did not respond" path.
+  const FETCH_TIMEOUT_MS = 12000;
+  function fetchWithTimeout(url, options, timeoutMs) {
+    const controller = new AbortController();
+    const t = setTimeout(() => controller.abort(), timeoutMs || FETCH_TIMEOUT_MS);
+    const opts = Object.assign({}, options || {}, { signal: controller.signal });
+    return fetch(url, opts).catch((err) => {
+      if (err && err.name === 'AbortError') {
+        throw new Error('Backend unreachable — request timed out.');
+      }
+      throw err;
+    }).finally(() => clearTimeout(t));
   }
 
   // ---- History view (#8) ----------------------------------------------------
@@ -2476,11 +2510,12 @@
     }
     let battery = null, storage = null, network = null;
     try {
-      [battery, storage, network] = await Promise.all([
-        safeCommand('battery', id, { log: false }),
-        safeCommand('storage', id, { log: false }),
-        safeCommand('network', id, { log: false }),
-      ]);
+      // Serialize (NOT Promise.all): three parallel commands spawn three 2s
+      // pollers and burned the free relay's request quota. Run them one at a
+      // time so only a single command poller is active at any moment.
+      battery = await safeCommand('battery', id, { log: false });
+      storage = await safeCommand('storage', id, { log: false });
+      network = await safeCommand('network', id, { log: false });
     } catch (err) { /* ignore */ }
     deviceStatusCache[id] = { ts: now, battery, storage, network };
     renderDeviceStatus(statusEl, battery, storage, network);
@@ -2757,10 +2792,8 @@
         drawScreenTexture(state, '—', '—');
         return;
       }
-      const [battery, info] = await Promise.all([
-        safeCommand('battery', id, { log: false }),
-        safeCommand('deviceinfo', id, { log: false }),
-      ]);
+      const battery = await safeCommand('battery', id, { log: false });
+      const info = await safeCommand('deviceinfo', id, { log: false });
       if (phone3d !== state) return;
       let name = '';
       const dev = devicesCache.find((d) => ((d.device_id || d.id) === id) && d.online);
@@ -3189,7 +3222,7 @@
     let points = [];
     let unavailable = false;
     try {
-      const res = await fetch(BACKEND_LOCATION_URL + '?' + qs.toString(), {
+      const res = await fetchWithTimeout(BACKEND_LOCATION_URL + '?' + qs.toString(), {
         headers: { 'X-Web-Key': agentWebKey() },
       });
       if (res.status === 404) {
@@ -3276,7 +3309,7 @@
     listEl.appendChild(el('div', 'result-loading', 'Loading tasks…'));
     let tasks = [];
     try {
-      const res = await fetch(BACKEND_SCHEDULE_URL, { headers: { 'X-Web-Key': agentWebKey() } });
+      const res = await fetchWithTimeout(BACKEND_SCHEDULE_URL, { headers: { 'X-Web-Key': agentWebKey() } });
       if (res.status === 404) {
         listEl.innerHTML = '';
         listEl.appendChild(el('div', 'hint', '⏰ Task scheduling is not available yet (the relay does not expose /schedule).'));
@@ -3317,7 +3350,7 @@
       return;
     }
     try {
-      const res = await fetch(BACKEND_SCHEDULE_URL, {
+      const res = await fetchWithTimeout(BACKEND_SCHEDULE_URL, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json', 'X-Web-Key': agentWebKey() },
         body: JSON.stringify({ id: String(id) }),
@@ -3341,7 +3374,7 @@
     if (!Number.isFinite(interval) || interval < 1) { toast('Interval must be a positive number of seconds'); return; }
     const device_id = deviceSel.value || '';
     try {
-      const res = await fetch(BACKEND_SCHEDULE_URL, {
+      const res = await fetchWithTimeout(BACKEND_SCHEDULE_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Web-Key': agentWebKey() },
         body: JSON.stringify({ device_id, command, interval_seconds: interval }),
@@ -3731,11 +3764,6 @@
           failGate('❌ Invalid security key — the backend rejected it.');
           return;
         }
-        if (!res.ok) {
-          failGate('⚠️ Backend error (HTTP ' + res.status + ')');
-          return;
-        }
-
         if (!res.ok) {
           failGate('⚠️ Backend error (HTTP ' + res.status + ')');
           return;
