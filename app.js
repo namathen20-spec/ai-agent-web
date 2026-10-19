@@ -2946,7 +2946,8 @@
     } catch (err) { /* ignore */ }
     // Also tell the relay (command channel) to stop the phone-side live source.
     try {
-      const stopCmd = s.mode === 'audio' ? 'live_audio stop' : 'live_camera stop';
+      const stopCmd = s.mode === 'screen' ? 'live_screen stop'
+        : (s.mode === 'audio' ? 'live_audio stop' : 'live_camera stop');
       safeCommand(stopCmd, s.deviceId, { log: false });
     } catch (err) { /* ignore */ }
   }
@@ -2958,6 +2959,14 @@
     if (video.srcObject !== remoteStream) video.srcObject = remoteStream;
     const box = video && video.closest ? video.closest('.live') : null;
     if (box) box.classList.add('live--streaming');
+    // Screen share has no mic, so skip the tap-to-unmute/mic dance entirely.
+    if (s && s.mode === 'screen') {
+      try { video.muted = false; } catch (err) { /* ignore */ }
+      const p = video.play();
+      if (p && typeof p.catch === 'function') p.catch(() => { /* ignore */ });
+      status.textContent = '🖥️ Screen streaming live…';
+      return;
+    }
     const attempt = video.play();
     if (attempt && typeof attempt.catch === 'function') {
       attempt.then(() => {
@@ -3011,14 +3020,14 @@
 
   // Build the Live Camera / Live Audio tile view.
   function openLiveStream(scope, mode) {
-    const isVideo = mode === 'camera';
+    const isVideo = mode === 'camera' || mode === 'screen';
     const box = el('div', 'live');
 
     const status = el('div', 'hint', 'Ready — Start to stream live.');
 
     // Lens selector (camera only) — pick front/back before streaming.
     let lens = 'back';
-    if (isVideo) {
+    if (mode === 'camera') {
       let lensBack = null, lensFront = null;
       const setLens = (l) => {
         lens = l;
@@ -3044,7 +3053,9 @@
     try { video.volume = 0.8; } catch (err) { /* ignore */ }
     if (!isVideo) video.style.display = 'none'; // audio-only: hidden player
 
-    const startBtn = makeButton(isVideo ? '▶ Start camera' : '▶ Start mic',
+    const startLabel = mode === 'camera' ? '▶ Start camera'
+      : (mode === 'screen' ? '▶ Start screen' : '▶ Start mic');
+    const startBtn = makeButton(startLabel,
       () => startLive(mode, video, status, startBtn, lens), 'tc-btn tc-btn--primary');
     const stopBtn = makeButton('⏹ Stop', () => {
       liveCleanup();
@@ -3279,7 +3290,7 @@
     liveBusy = true;
     if (startBtn) startBtn.disabled = true;
     try {
-      const isVideo = mode === 'camera';
+      const isVideo = mode === 'camera' || mode === 'screen';
 
       if (!window.RTCPeerConnection) {
         status.textContent = '⚠️ This browser does not support live streaming (RTCPeerConnection missing).';
@@ -3303,12 +3314,13 @@
 
       // Tell the phone to start its WebRTC source (fire-and-forget). The phone
       // then joins the /signal room and sends us the offer we answer below.
-      const startCmd = isVideo ? ('live_camera start ' + (lens || 'back')) : 'live_audio start';
+      const startCmd = mode === 'screen' ? 'live_screen start'
+        : (isVideo ? ('live_camera start ' + (lens || 'back')) : 'live_audio start');
       postCommand(startCmd, id, { log: false }).catch(() => {});
 
       const pc = new RTCPeerConnection({ iceServers: [{ urls: LIVE_STUN }, LIVE_TURN] });
       const remoteStream = new MediaStream();
-      const s = { ws: null, pc, video, timer: null, negTimer: null, gotOffer: false, remoteSet: false, pendingIce: [], deviceId: id, mode: isVideo ? 'camera' : 'audio' };
+      const s = { ws: null, pc, video, timer: null, negTimer: null, gotOffer: false, remoteSet: false, pendingIce: [], deviceId: id, mode };
       liveStream = s;
 
       pc.ontrack = (ev) => {
@@ -3356,7 +3368,10 @@
         liveCleanup();
       }, 20000);
 
-      const wsUrl = SIGNAL_WS_BASE + '?room=' + encodeURIComponent(id) + '&role=browser' + SIGNAL_KEY;
+      // Screen share uses a distinct room (device_id + "-screen") so it never
+      // collides with a simultaneous live-camera signal room.
+      const roomId = mode === 'screen' ? (id + '-screen') : id;
+      const wsUrl = SIGNAL_WS_BASE + '?room=' + encodeURIComponent(roomId) + '&role=browser' + SIGNAL_KEY;
       status.textContent = 'Connecting to ' + id + '…';
 
       let ws;
@@ -3836,6 +3851,7 @@
     { id: 'phone3d', emoji: '🛰️', label: 'Phone 3D', sub: 'Live phone model', color: '#38b2ac', onClose: disposePhone3d, build: openPhone3d },
     { id: 'livecamera', emoji: '🎥', label: 'Live Camera', sub: 'WebRTC video + mic', color: '#ff6b6b', onClose: liveCleanup, build: (s) => openLiveStream(s, 'camera') },
     { id: 'liveaudio', emoji: '🎙️', label: 'Live Audio', sub: 'WebRTC mic streaming', color: '#38b2ac', onClose: liveCleanup, build: (s) => openLiveStream(s, 'audio') },
+    { id: 'livescreen', emoji: '🖥️', label: 'Live Screen', sub: 'WebRTC 30fps screen share', color: '#38bdf8', onClose: liveCleanup, build: (s) => openLiveStream(s, 'screen') },
   ];
 
   // ---------------------------------------------------------------------------
