@@ -3849,9 +3849,9 @@
     { id: 'map', emoji: '📍', label: 'Map', sub: 'Live GPS history', color: '#3fb96a', build: openMap },
     { id: 'tasks', emoji: '⏰', label: 'Tasks', sub: 'Scheduled commands', color: '#f2b13c', build: openTasks },
     { id: 'phone3d', emoji: '🛰️', label: 'Phone 3D', sub: 'Live phone model', color: '#38b2ac', onClose: disposePhone3d, build: openPhone3d },
-    { id: 'livecamera', emoji: '🎥', label: 'Live Camera', sub: 'WebRTC video + mic', color: '#ff6b6b', onClose: liveCleanup, build: (s) => openLiveStream(s, 'camera') },
     { id: 'liveaudio', emoji: '🎙️', label: 'Live Audio', sub: 'WebRTC mic streaming', color: '#38b2ac', onClose: liveCleanup, build: (s) => openLiveStream(s, 'audio') },
     { id: 'livescreen', emoji: '🖥️', label: 'Live Screen', sub: 'WebRTC 30fps screen share', color: '#38bdf8', onClose: liveCleanup, build: (s) => openLiveStream(s, 'screen') },
+    { id: 'livecamera', emoji: '🎥', label: 'Live Camera', sub: 'WebRTC video + mic', color: '#ff6b6b', onClose: liveCleanup, build: (s) => openLiveStream(s, 'camera') },
   ];
 
   // ---------------------------------------------------------------------------
