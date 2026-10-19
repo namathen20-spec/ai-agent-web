@@ -241,14 +241,6 @@
       },
     },
     {
-      id: 'live', emoji: '📺', label: 'Live Screen', sub: 'Mirror the screen', color: '#38b2ac',
-      build(scope) {
-        scope.controls.appendChild(makeButton('▶ Start', () => scope.run('live start', 'link'), 'tc-btn'));
-        scope.controls.appendChild(makeButton('⏹ Stop', () => scope.run('live stop'), 'tc-btn'));
-        scope.controls.appendChild(makeButton('📊 Status', () => scope.run('live status', 'link'), 'tc-btn'));
-      },
-    },
-    {
       id: 'notifs', emoji: '🔔', label: 'Notifications', sub: 'Read phone notifs', color: '#f2b13c',
       build(scope) {
         const count = makeInput('number', 'Count (e.g. 10)', 10);
