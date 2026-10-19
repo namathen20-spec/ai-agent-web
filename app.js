@@ -3352,13 +3352,14 @@
         } catch (err) { /* ignore */ }
       };
 
-      // Give negotiation up to ~20s to complete, then tear down and stop the relay.
+      // Give negotiation up to ~60s to complete (matches the phone's live_camera
+      // command budget of 60s), then tear down and stop the relay.
       s.negTimer = setTimeout(() => {
         if (liveStream !== s) return;
         if (s.gotOffer && (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed')) return;
-        status.textContent = '⚠️ Negotiation timed out (20s) — check the phone and retry.';
+        status.textContent = '⚠️ Negotiation timed out (60s) — check the phone and retry.';
         liveCleanup();
-      }, 20000);
+      }, 60000);
 
       // Screen share uses a distinct room (device_id + "-screen") so it never
       // collides with a simultaneous live-camera signal room.
