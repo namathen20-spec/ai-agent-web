@@ -1056,6 +1056,7 @@
     const d = String(detail || '').toLowerCase();
     if (status === 401 || status === 403) return 'auth';
     if (/api\s?key|credential|unauthor|authentication|\bauth\b/.test(d)) return 'auth';
+    if (status === 429 || /rate.?limi/i.test(d)) return 'rateLimited';
     if (/\b(?:invalid|unknown|unsupported|not\s+found|does\s+not\s+exist|no\s+such)\s+(?:model|model\s+id)\b|\bmodel\b\s+(?:invalid|unknown|unsupported|not\s+found|does\s+not\s+exist)/.test(d)) return 'model';
     if (status >= 500) return 'backend';
     if (status >= 400) return 'provider';
@@ -1069,6 +1070,7 @@
       auth: '🔑 Invalid API key',
       model: '🤖 Invalid model',
       provider: '🤖 Provider error',
+      rateLimited: '⏳ Rate limited',
       backend: '🔌 Backend error',
       unknown: '⚠️ Error',
     };
@@ -1076,6 +1078,21 @@
     const detail = (err && err.message) ? err.message : String(err);
     const prefix = prefixes[kind] || prefixes.unknown;
     return detail ? prefix + '\n' + detail : prefix;
+  }
+
+  function appendRateCountdown(containerEl, seconds = 60) {
+    let remaining = Math.max(1, Math.floor(seconds || 0));
+    const pre = el('pre', 'result-pre result-error', '⏳ Rate limited — retry in ' + remaining + 's');
+    containerEl.appendChild(pre);
+    const timer = setInterval(() => {
+      remaining -= 1;
+      if (remaining <= 0) {
+        clearInterval(timer);
+        pre.textContent = '✅ Rate limit reset — retry now.';
+        return;
+      }
+      pre.textContent = '⏳ Rate limited — retry in ' + remaining + 's';
+    }, 1000);
   }
 
   const CHAT_TIMEOUT_MS = 180000;
@@ -1809,10 +1826,14 @@
       const raw = (data && typeof data.result !== 'undefined') ? data.result : '';
       renderToolResult(out, raw, kind || 'auto');
     } catch (err) {
-      const msg = formatError(err);
       out.innerHTML = '';
-      out.appendChild(el('pre', 'result-pre result-error', '⚠️ ' + msg));
-      toast('⚠️ ' + msg);
+      if (err && err.kind === 'rateLimited') {
+        appendRateCountdown(out);
+      } else {
+        const msg = formatError(err);
+        out.appendChild(el('pre', 'result-pre result-error', '⚠️ ' + msg));
+        toast('⚠️ ' + msg);
+      }
     } finally {
       ccBusy = false;
     }
@@ -2103,7 +2124,11 @@
       renderContactList(scope, contacts, '');
     } catch (err) {
       out.innerHTML = '';
-      out.appendChild(el('pre', 'result-pre result-error', '⚠️ ' + formatError(err)));
+      if (err && err.kind === 'rateLimited') {
+        appendRateCountdown(out);
+      } else {
+        out.appendChild(el('pre', 'result-pre result-error', '⚠️ ' + formatError(err)));
+      }
     }
   }
 
