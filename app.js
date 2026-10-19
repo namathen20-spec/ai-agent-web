@@ -2897,12 +2897,12 @@
 
   // ---------------------------------------------------------------------------
   // Live Camera / Live Audio (WebRTC peer-to-peer).
-  // The relay (gokul-agent-server.onrender.com) only forwards SDP/ICE over
-  // wss://<relay>/signal?room=<device_id>&role=browser. The actual video/audio
-  // flows phone <-> browser over the STUN/ICE-negotiated peer route, so the free
-  // Render relay is never in the media path.
+  // The Cloudflare Worker (ai-agent-backend.workers.dev) only forwards SDP/ICE
+  // over wss://<worker>/signal?room=<device_id>&role=browser via its SignalHub
+  // Durable Object. The actual video/audio flows phone <-> browser over the
+  // STUN/ICE-negotiated peer route, so the Worker is never in the media path.
   // ---------------------------------------------------------------------------
-  const SIGNAL_WS_BASE = 'wss://gokul-agent-server.onrender.com/signal';
+  const SIGNAL_WS_BASE = 'wss://ai-agent-backend.ai-agent-backend.workers.dev/signal';
   // Relay auth for the /signal WebSocket (matches the relay API key).
   const SIGNAL_KEY = '&key=' + encodeURIComponent('Y7I13VPjo7X32XzektRatuYXD6ROvvwdvJdeT3Gf8roX');
   const LIVE_STUN = 'stun:stun.l.google.com:19302';
