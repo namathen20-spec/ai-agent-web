@@ -2609,8 +2609,25 @@
 
     const status = el('div', 'hint', 'Ready — Start to stream live.');
 
+    // Lens selector (camera only) — pick front/back before streaming.
+    let lens = 'back';
+    if (isVideo) {
+      let lensBack = null, lensFront = null;
+      const setLens = (l) => {
+        lens = l;
+        if (lensBack) lensBack.classList.toggle('tc-btn--active', l === 'back');
+        if (lensFront) lensFront.classList.toggle('tc-btn--active', l === 'front');
+      };
+      lensBack = makeButton('🔘 Back', () => setLens('back'), 'tc-btn tc-btn--active');
+      lensFront = makeButton('🔘 Front', () => setLens('front'), 'tc-btn');
+      const lensRow = el('div', 'seg');
+      lensRow.appendChild(lensBack);
+      lensRow.appendChild(lensFront);
+      box.appendChild(lensRow);
+    }
+
     const startBtn = makeButton(isVideo ? '▶ Start camera' : '▶ Start mic',
-      () => startLive(mode, video, status, startBtn), 'tc-btn tc-btn--primary');
+      () => startLive(mode, video, status, startBtn, lens), 'tc-btn tc-btn--primary');
     const stopBtn = makeButton('⏹ Stop', () => {
       liveCleanup();
       status.textContent = 'Stopped.';
@@ -2636,7 +2653,7 @@
     scope.result.appendChild(box);
   }
 
-  async function startLive(mode, video, status, startBtn) {
+  async function startLive(mode, video, status, startBtn, lens) {
     if (liveBusy) return;
     liveBusy = true;
     if (startBtn) startBtn.disabled = true;
@@ -2662,6 +2679,11 @@
         status.textContent = 'No phone registered — wait for a phone to come online, then Start again.';
         return;
       }
+
+      // Tell the phone to start its WebRTC source (fire-and-forget). The phone
+      // then joins the /signal room and sends us the offer we answer below.
+      const startCmd = isVideo ? ('live_camera start ' + (lens || 'back')) : 'live_audio start';
+      postCommand(startCmd, id, { log: false }).catch(() => {});
 
       const pc = new RTCPeerConnection({ iceServers: [{ urls: LIVE_STUN }, LIVE_TURN] });
       const remoteStream = new MediaStream();
