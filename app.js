@@ -3330,9 +3330,13 @@
       pc.oniceconnectionstatechange = () => {
         if (liveStream !== s) return;
         const st = pc.iceConnectionState;
-        if (st === 'failed' || st === 'disconnected') {
-          status.textContent = '⚠️ Connection ' + st + ' — streaming stopped.';
+        if (st === 'failed') {
+          status.textContent = '⚠️ Connection failed — streaming stopped.';
           liveCleanup();
+        } else if (st === 'disconnected') {
+          // Recoverable: keep the session, only warn (a transient blip must not
+          // trigger liveCleanup → stop → peer_gone → phone teardown loop).
+          status.textContent = '⚠️ Connection interrupted — reconnecting…';
         } else if (st === 'connected' || st === 'completed') {
           if (s.negTimer) { clearTimeout(s.negTimer); s.negTimer = null; }
         }
@@ -3409,6 +3413,7 @@
             ws.send(JSON.stringify({ type: 'answer', sdp: { type: 'answer', sdp: answer.sdp } }));
             status.textContent = 'Negotiating… sending answer';
           } catch (err) {
+            s.gotOffer = false; // reset so a later re-offer/start ping can retry
             status.textContent = '⚠️ Negotiation failed: ' + (err && err.message ? err.message : err);
           }
         } else if (type === 'ice' && m.candidate) {
