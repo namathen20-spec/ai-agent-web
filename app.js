@@ -2902,13 +2902,13 @@
   // still connect when a direct host/STUN candidate can't be negotiated.
   const LIVE_TURN = {
     urls: [
-      'turn:openrelay.metered.ca:80',
-      'turn:openrelay.metered.ca:80?transport=tcp',
-      'turn:openrelay.metered.ca:443',
-      'turns:openrelay.metered.ca:443?transport=tcp',
+      'turn:free.expressturn.com:3478',
+      'turn:free.expressturn.com:3478?transport=tcp',
+      'turn:free.expressturn.com:443',
+      'turn:free.expressturn.com:80',
     ],
-    username: 'openrelayproject',
-    credential: 'openrelayproject',
+    username: '000000002107860753',
+    credential: 'yglESvob4ScvSRyf7RNO9/RCnwU=',
   };
 
   // Active session: { ws, pc, video, timer, negTimer, gotOffer, remoteSet, pendingIce, deviceId, mode } or null.
