@@ -2902,13 +2902,13 @@
   // still connect when a direct host/STUN candidate can't be negotiated.
   const LIVE_TURN = {
     urls: [
-      'turn:openrelay.metered.ca:80',
-      'turn:openrelay.metered.ca:443',
-      'turn:openrelay.metered.ca:443?transport=tcp',
-      'turns:openrelay.metered.ca:443?transport=tcp',
+      'turn:global.relay.metered.ca:80',
+      'turn:global.relay.metered.ca:80?transport=tcp',
+      'turn:global.relay.metered.ca:443',
+      'turns:global.relay.metered.ca:443?transport=tcp',
     ],
-    username: 'openrelayproject',
-    credential: 'openrelayproject',
+    username: 'sk_id_17b999f165e5e07cc9da277b255b0cc6',
+    credential: 'sk_secret_7d90b70692dbf15a0392546054dfe1af5f4191c0bffd4b6a2a3d727bd4e6d6fb',
   };
 
   // Active session: { ws, pc, video, timer, negTimer, gotOffer, remoteSet, pendingIce, deviceId, mode } or null.
