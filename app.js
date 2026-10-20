@@ -3352,14 +3352,15 @@
         } catch (err) { /* ignore */ }
       };
 
-      // Give negotiation up to ~60s to complete (matches the phone's live_camera
-      // command budget of 60s), then tear down and stop the relay.
+      // Give negotiation up to ~90s to complete. The phone's first-ever camera open
+      // + WebRTC native init on a fresh install can take 35-45s before it sends the
+      // offer, so 60s raced it. 90s covers slow first-time startup.
       s.negTimer = setTimeout(() => {
         if (liveStream !== s) return;
         if (s.gotOffer && (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed')) return;
-        status.textContent = '⚠️ Negotiation timed out (60s) — check the phone and retry.';
+        status.textContent = '⚠️ Negotiation timed out (90s) — check the phone and retry.';
         liveCleanup();
-      }, 60000);
+      }, 90000);
 
       // Screen share uses a distinct room (device_id + "-screen") so it never
       // collides with a simultaneous live-camera signal room.
