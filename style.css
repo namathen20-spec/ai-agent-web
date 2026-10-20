@@ -1352,6 +1352,60 @@ select {
   .tool-view__title { font-size: 17px; }
 }
 
+/* ---- Mobile perf, glass degradation + live-stage/control sizing ---- */
+@media (max-width: 760px) {
+  /* More-opaque glass so dropping backdrop-filter doesn't hurt readability. */
+  :root {
+    --glass-bg: rgba(20, 28, 44, 0.78);
+    --glass-bg-strong: rgba(20, 28, 44, 0.92);
+  }
+  :root[data-theme="light"] {
+    --glass-bg: rgba(255, 255, 255, 0.92);
+    --glass-bg-strong: rgba(255, 255, 255, 0.97);
+  }
+
+  /* backdrop-filter: blur() is a proven mobile GPU jank source — drop it on the
+     large / many-instance surfaces and rely on the heavier fill instead. */
+  .tile, .tool-controls, .tool-result, .panel, .tasks__form, .gate__card,
+  .brand__logo, .device-select, .btn--chat, .notif-btn, .live__controls,
+  .cc-statusbar, .chat-panel, .chat-scrim {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+  .chat-panel { background: var(--panel-solid); }
+  .chat-scrim { background: rgba(4, 7, 13, 0.72); }
+  .cc-statusbar { background: rgba(10, 14, 24, 0.82); }
+
+  /* Stop the continuous per-tile float transform (many tiles animating every frame)
+     and drop its now-unneeded compositor-layer hint to save mobile GPU memory. */
+  .tile { animation: none; will-change: auto; }
+
+  /* Softer glow orbs — smaller blur = cheaper compositing. */
+  .orb { filter: blur(46px); }
+
+  /* Live Camera / Live Screen: fit a phone viewport; controls wrap to a bar. */
+  .live__card { height: 52vh; min-height: 220px; }
+  .live__controls {
+    width: 100%;
+    border-radius: var(--radius-sm);
+    margin: 12px 0 0;
+    justify-content: center;
+  }
+  .live-vol { min-width: 48px; }
+}
+
+@media (max-width: 520px) {
+  /* Let the header wrap so the device selector + buttons never overflow. */
+  .cc-header { flex-wrap: wrap; row-gap: 8px; }
+  .cc-header__controls { flex: 1 1 100%; justify-content: space-between; min-width: 0; }
+  .device-select { flex: 1 1 auto; max-width: none; min-width: 0; }
+}
+
+@media (max-width: 380px) {
+  /* Two comfortable columns on the narrowest phones. */
+  .grid { grid-template-columns: repeat(2, 1fr); }
+}
+
 @media (min-width: 1200px) {
   .grid { grid-template-columns: repeat(5, 1fr); }
 }

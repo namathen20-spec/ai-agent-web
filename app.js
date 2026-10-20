@@ -921,8 +921,8 @@
   // -------------------------------------------------------------------------
   // Typewriter ("streaming") effect — only NEW assistant replies animate.
   // -------------------------------------------------------------------------
-  const TYPEWRITER_TICK = 3;  // ms between reveals (~3ms/char)
-  const TYPEWRITER_CHARS = 1; // characters revealed per tick
+  const TYPEWRITER_TICK = 32;  // ~30fps reveal
+  const TYPEWRITER_CHARS = 10; // ~300 chars/s — ~10x fewer innerHTML rebuilds
   const TYPING_CARET = '<span class="typing-caret" aria-hidden="true">▍</span>';
 
   function prefersReducedMotion() {
@@ -2173,14 +2173,24 @@
   // 3D tilt — rotate tiles toward the cursor (desktop only).
   function attachTilt(tile) {
     if (window.matchMedia && window.matchMedia('(hover: none)').matches) return; // mobile = float
-    tile.addEventListener('mousemove', (e) => {
-      const r = tile.getBoundingClientRect();
-      const px = (e.clientX - r.left) / r.width;
-      const py = (e.clientY - r.top) / r.height;
+    // Coalesce mousemove reads/writes through rAF so a fast pointer can't
+    // thrash the tile's CSS custom properties (and its transform) every event.
+    let raf = 0;
+    let px = 0.5, py = 0.5;
+    const apply = () => {
+      raf = 0;
       tile.style.setProperty('--rx', ((0.5 - py) * 22).toFixed(2) + 'deg');
       tile.style.setProperty('--ry', ((px - 0.5) * 22).toFixed(2) + 'deg');
+    };
+    tile.addEventListener('mousemove', (e) => {
+      const r = tile.getBoundingClientRect();
+      px = (e.clientX - r.left) / r.width;
+      py = (e.clientY - r.top) / r.height;
+      if (!raf) raf = requestAnimationFrame(apply);
     });
     tile.addEventListener('mouseleave', () => {
+      if (raf) cancelAnimationFrame(raf);
+      raf = 0;
       tile.style.setProperty('--rx', '0deg');
       tile.style.setProperty('--ry', '0deg');
     });
@@ -2212,11 +2222,15 @@
     });
   }
 
-  // Lightweight particle field behind the UI (skipped for reduced-motion).
+  // Lightweight particle field behind the UI (skipped for reduced-motion and
+  // small screens — a full-screen rAF loop with per-particle shadows is a
+  // reliable source of jank on low-power mobile GPUs; the static glow orbs remain).
   function initParticles() {
     const canvas = document.getElementById('particles');
     if (!canvas || prefersReducedMotion()) return;
+    if (window.matchMedia && window.matchMedia('(max-width: 760px)').matches) return;
     const ctx = canvas.getContext('2d');
+    if (!ctx) return;
     let w, h, dots;
     function resize() {
       w = canvas.width = window.innerWidth;
@@ -2224,14 +2238,14 @@
     }
     resize();
     window.addEventListener('resize', resize);
-    const N = Math.min(50, Math.floor(window.innerWidth / 24));
+    const N = Math.min(36, Math.floor(window.innerWidth / 30));
     dots = Array.from({ length: N }, () => ({
       x: Math.random() * w,
       y: Math.random() * h,
-      r: Math.random() * 1.8 + 0.6,
+      r: Math.random() * 2 + 0.8,
       vx: (Math.random() - 0.5) * 0.22,
       vy: (Math.random() - 0.5) * 0.22,
-      a: Math.random() * 0.5 + 0.15,
+      a: Math.random() * 0.5 + 0.2,
       hue: Math.random() < 0.5 ? 215 : 262,
     }));
     function step() {
@@ -2242,9 +2256,9 @@
         if (d.y < 0) d.y = h; else if (d.y > h) d.y = 0;
         ctx.beginPath();
         ctx.arc(d.x, d.y, d.r, 0, Math.PI * 2);
+        // No per-particle shadowBlur / shadowColor — that state change per dot
+        // is very expensive on mobile GPUs while a plain circle is nearly free.
         ctx.fillStyle = 'hsla(' + d.hue + ', 90%, 70%, ' + d.a + ')';
-        ctx.shadowBlur = 6;
-        ctx.shadowColor = 'hsla(' + d.hue + ', 90%, 60%, 0.6)';
         ctx.fill();
       });
       requestAnimationFrame(step);
@@ -3543,6 +3557,9 @@
         setPlaceholder(false);
         const w = img.naturalWidth, h = img.naturalHeight;
         meta.textContent = '📱 ' + deviceId + ((w && h) ? (' · ' + w + '×' + h) : '');
+        // A real frame arrived — stop probing so the view doesn't issue a
+        // cache-busted network request every 1.5s for its entire lifetime.
+        if (liveMirrorTimer) { clearInterval(liveMirrorTimer); liveMirrorTimer = 0; }
       };
       img.onerror = function () { setPlaceholder(true); };
       img.src = LIVE_SCREEN_RAW_BASE + '?device_id=' + encodeURIComponent(deviceId) + '&_=' + Date.now();
