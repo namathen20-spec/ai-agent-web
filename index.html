@@ -26,13 +26,26 @@
     })();
   </script>
 
-  <link rel="stylesheet" href="style.css?v=20" />
+  <!-- Type: Space Grotesk (UI / headings) + IBM Plex Mono (data readouts) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap"
+    rel="stylesheet"
+  />
+
+  <link rel="stylesheet" href="style.css?v=21" />
 </head>
 <body>
   <!-- ===================== Security-key gate (lock screen) ===================== -->
   <div id="passwordGate" class="gate" role="dialog" aria-modal="true" aria-label="Unlock AI Agent">
     <form class="gate__card" id="gateForm" autocomplete="off">
-      <div class="gate__lock" aria-hidden="true">🔒</div>
+      <div class="gate__lock" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="5" y="10.5" width="14" height="9.5" rx="2" />
+          <path d="M8 10.5V7.5a4 4 0 0 1 8 0v3" />
+        </svg>
+      </div>
       <h2 class="gate__title">AI Agent</h2>
       <p class="gate__sub">This app is locked. Enter your security key to continue.</p>
       <input
@@ -63,7 +76,12 @@
     <!-- Top header -->
     <header class="cc-header">
       <div class="brand">
-        <span class="brand__logo" aria-hidden="true">🛰️</span>
+        <span class="brand__logo" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="8" />
+            <path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3" />
+          </svg>
+        </span>
         <div class="brand__text">
           <h1>Control Center</h1>
           <p class="brand__sub">AI Agent · phone remote</p>
@@ -74,11 +92,20 @@
           <option value="">📱 Auto device</option>
         </select>
         <button class="notif-btn" id="notifBtn" type="button" title="Live notifications" aria-label="Live notifications">
-          <span class="notif-btn__icon" aria-hidden="true">🔴</span>
+          <span class="notif-btn__icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M6.5 9.5a5.5 5.5 0 0 1 11 0c0 4.5 1.5 6 1.5 6H5s1.5-1.5 1.5-6z" />
+              <path d="M10 18.5a2 2 0 0 0 4 0" />
+            </svg>
+          </span>
           <span class="notif-btn__badge" id="notifBadge" hidden>0</span>
         </button>
         <button class="btn btn--chat" id="chatToggle" type="button" title="Toggle AI chat">
-          <span>💬</span> AI Chat
+          <span class="btn--chat__icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M4 6h16a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H9l-4 4v-4H4a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1z" />
+            </svg>
+          </span> AI Chat
         </button>
       </div>
     </header>
@@ -114,9 +141,9 @@
         <span class="dot" id="statusDot"></span>
         <span id="statusDevice"></span>
       </span>
-      <span class="cc-statusbar__item" id="statusBattery">🔋 —</span>
-      <span class="cc-statusbar__item" id="statusStorage">💾 —</span>
-      <span class="cc-statusbar__item" id="statusNetwork">📶 —</span>
+      <span class="cc-statusbar__item" id="statusBattery">BAT —</span>
+      <span class="cc-statusbar__item" id="statusStorage">STO —</span>
+      <span class="cc-statusbar__item" id="statusNetwork">NET —</span>
     </footer>
   </div>
 
@@ -213,6 +240,6 @@
     </form>
   </aside>
 
-  <script src="app.js?v=44"></script>
+  <script src="app.js?v=45"></script>
 </body>
 </html>

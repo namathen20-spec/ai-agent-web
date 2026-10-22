@@ -1386,9 +1386,9 @@
     el.textContent = message;
     el.style.cssText =
       'position:fixed;left:50%;bottom:90px;transform:translateX(-50%);' +
-      'background:rgba(31,58,95,0.95);color:#e6edf3;padding:8px 14px;' +
-      'border-radius:8px;font-size:13px;z-index:1000;pointer-events:none;' +
-      'box-shadow:0 8px 30px rgba(0,0,0,0.35);transition:opacity 0.3s ease;';
+      'background:rgba(13,19,29,0.95);color:#e9eef5;padding:8px 14px;' +
+      'border:1px solid #1c2532;border-radius:6px;font-size:13px;z-index:1000;pointer-events:none;' +
+      'box-shadow:inset 0 1px 0 rgba(255,255,255,0.05),0 8px 24px rgba(0,0,0,0.35);transition:opacity 0.3s ease;';
     document.body.appendChild(el);
     setTimeout(() => {
       el.style.opacity = '0';
@@ -2137,7 +2137,7 @@
     toolView.style.animation = 'none';
     void toolView.offsetWidth;
     toolView.style.animation = '';
-    toolTitle.textContent = tool.emoji + ' ' + tool.label;
+    toolTitle.textContent = tool.label;
     toolControlsEl.innerHTML = '';
     toolControlsEl.style.display = '';
     toolResultEl.innerHTML = '';
@@ -2172,6 +2172,7 @@
 
   // 3D tilt — rotate tiles toward the cursor (desktop only).
   function attachTilt(tile) {
+    if (prefersReducedMotion()) return;
     if (window.matchMedia && window.matchMedia('(hover: none)').matches) return; // mobile = float
     // Coalesce mousemove reads/writes through rAF so a fast pointer can't
     // thrash the tile's CSS custom properties (and its transform) every event.
@@ -2179,8 +2180,8 @@
     let px = 0.5, py = 0.5;
     const apply = () => {
       raf = 0;
-      tile.style.setProperty('--rx', ((0.5 - py) * 22).toFixed(2) + 'deg');
-      tile.style.setProperty('--ry', ((px - 0.5) * 22).toFixed(2) + 'deg');
+      tile.style.setProperty('--rx', ((0.5 - py) * 4).toFixed(2) + 'deg');
+      tile.style.setProperty('--ry', ((px - 0.5) * 4).toFixed(2) + 'deg');
     };
     tile.addEventListener('mousemove', (e) => {
       const r = tile.getBoundingClientRect();
@@ -2196,11 +2197,49 @@
     });
   }
 
+  // Monochrome SVG line-icon set for tiles (replaces consumer emoji). Keyed by
+  // tool id; anything without an icon falls back to a grayscale emoji glyph.
+  const TILE_ICON_ATTRS = 'viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"';
+  function tileSvg(inner) {
+    return '<svg ' + TILE_ICON_ATTRS + '>' + inner + '</svg>';
+  }
+  const TILE_ICONS = {
+    camera: tileSvg('<path d="M4 8.5A2.5 2.5 0 0 1 6.5 6h1.2l1-1.6h5.6L15.4 6h1.1A2.5 2.5 0 0 1 19 8.5v6a2.5 2.5 0 0 1-2.5 2.5h-10A2.5 2.5 0 0 1 4 14.5v-6z"/><circle cx="11.5" cy="11.5" r="3.2"/>'),
+    screenshot: tileSvg('<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M8 12.5h8"/>'),
+    audio: tileSvg('<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 18v3M9 21h6"/>'),
+    screenrecord: tileSvg('<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="3.5"/>'),
+    location: tileSvg('<path d="M12 21s-6.5-5.3-6.5-10.5a6.5 6.5 0 0 1 13 0C18.5 15.7 12 21 12 21z"/><circle cx="12" cy="10.5" r="2.4"/>'),
+    tap: tileSvg('<path d="M5.5 3.5l6 15 2.2-6.3L18.5 7.4 5.5 3.5z"/>'),
+    sms: tileSvg('<path d="M4 5h16a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H9l-4 4v-4H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z"/>'),
+    calllog: tileSvg('<path d="M6 4h4l1.5 4.5L9 10a12 12 0 0 0 5 5l1.5-2.5L20 14v4a2 2 0 0 1-2 2A15 15 0 0 1 4 6a2 2 0 0 1 2-2z"/>'),
+    contacts: tileSvg('<circle cx="12" cy="8" r="4"/><path d="M4.5 20.5c.8-3.6 4-5.5 7.5-5.5s6.7 1.9 7.5 5.5"/>'),
+    files: tileSvg('<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/>'),
+    notifs: tileSvg('<path d="M6 9a6 6 0 0 1 12 0c0 4.5 1.5 6 1.5 6h-15S6 13.5 6 9z"/><path d="M10 19a2 2 0 0 0 4 0"/>'),
+    lifelog: tileSvg('<path d="M8.5 6h12M8.5 12h12M8.5 18h12"/><circle cx="4" cy="6" r="0.8"/><circle cx="4" cy="12" r="0.8"/><circle cx="4" cy="18" r="0.8"/>'),
+    battery: tileSvg('<rect x="3" y="8" width="16" height="8" rx="2"/><path d="M21 10.5v3"/><rect x="5" y="10" width="8" height="4" rx="1"/>'),
+    status: tileSvg('<path d="M3 12h4l2.5-7 5 14 2.5-7h4"/>'),
+    history: tileSvg('<circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3.5 2"/>'),
+    gallery: tileSvg('<rect x="3.5" y="4.5" width="17" height="15" rx="2"/><circle cx="9" cy="10" r="1.5"/><path d="M4.5 17l4.5-4.5 3 3 3.5-3.5 4 5"/>'),
+    devices: tileSvg('<rect x="7" y="3" width="10" height="18" rx="2.2"/><path d="M10.5 18h3"/>'),
+    map: tileSvg('<circle cx="12" cy="12" r="8.5"/><path d="M15 9l-2 4-4 2 2-4z"/>'),
+    tasks: tileSvg('<rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M8 3v4M16 3v4M3.5 10h17M9 15l2 2 4-4"/>'),
+    phone3d: tileSvg('<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/>'),
+    liveaudio: tileSvg('<path d="M3 10v4M7 7v10M11 4v16M15 7v10M19 10v4"/>'),
+    livescreen: tileSvg('<rect x="2.5" y="4.5" width="19" height="13" rx="2"/><path d="M8.5 21h7M12 17.5V21"/>'),
+    livecamera: tileSvg('<rect x="2.5" y="6.5" width="13" height="11" rx="2"/><path d="M15.5 11l6-3.5v9l-6-3.5"/><circle cx="7" cy="12" r="1.3"/>'),
+  };
+
   function buildTile(spec, onOpen) {
     const tile = el('button', 'tile');
     tile.type = 'button';
-    tile.style.setProperty('--tile-accent', spec.color || '#4f8cff');
-    tile.appendChild(el('span', 'tile__emoji', spec.emoji));
+    const icon = TILE_ICONS[spec.id];
+    if (icon) {
+      const glyph = el('span', 'tile__icon');
+      glyph.innerHTML = icon; // static authored SVG — safe
+      tile.appendChild(glyph);
+    } else {
+      tile.appendChild(el('span', 'tile__emoji', spec.emoji));
+    }
     tile.appendChild(el('span', 'tile__label', spec.label));
     tile.appendChild(el('span', 'tile__sub', spec.sub));
     tile.addEventListener('click', () => onOpen(spec));
@@ -2216,7 +2255,7 @@
       tileGrid.appendChild(tile);
     });
     SPECIALS.forEach((spec, i) => {
-      const tile = buildTile(spec, (s) => enterView(s.emoji + ' ' + s.label, s.onClose, s.build));
+      const tile = buildTile(spec, (s) => enterView(s.label, s.onClose, s.build));
       tile.style.animationDelay = ((TOOLS.length + i) * 30) + 'ms';
       tileGrid.appendChild(tile);
     });
@@ -2231,39 +2270,73 @@
     if (window.matchMedia && window.matchMedia('(max-width: 760px)').matches) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    let w, h, dots;
+    let w = 0, h = 0;
     function resize() {
       w = canvas.width = window.innerWidth;
       h = canvas.height = window.innerHeight;
     }
     resize();
     window.addEventListener('resize', resize);
-    const N = Math.min(36, Math.floor(window.innerWidth / 30));
-    dots = Array.from({ length: N }, () => ({
-      x: Math.random() * w,
-      y: Math.random() * h,
-      r: Math.random() * 2 + 0.8,
-      vx: (Math.random() - 0.5) * 0.22,
-      vy: (Math.random() - 0.5) * 0.22,
-      a: Math.random() * 0.5 + 0.2,
-      hue: Math.random() < 0.5 ? 215 : 262,
+
+    // Perspective starfield: ~110 points drifting toward the viewer through a
+    // focal plane. Single-path drawing with no shadowBlur → cheap on the GPU and
+    // reads as genuine 3D depth. Amber/dim-gray only (single signal palette).
+    const N = 110;
+    const FOCAL = 1.6;
+    const pts = Array.from({ length: N }, () => ({
+      x: Math.random() * 2 - 1,
+      y: Math.random() * 2 - 1,
+      z: Math.random(),
+      v: Math.random() * 0.0006 + 0.00025,
+      amber: Math.random() < 0.42,
+      tw: Math.random() * Math.PI * 2,
     }));
-    function step() {
-      ctx.clearRect(0, 0, w, h);
-      dots.forEach((d) => {
-        d.x += d.vx; d.y += d.vy;
-        if (d.x < 0) d.x = w; else if (d.x > w) d.x = 0;
-        if (d.y < 0) d.y = h; else if (d.y > h) d.y = 0;
-        ctx.beginPath();
-        ctx.arc(d.x, d.y, d.r, 0, Math.PI * 2);
-        // No per-particle shadowBlur / shadowColor — that state change per dot
-        // is very expensive on mobile GPUs while a plain circle is nearly free.
-        ctx.fillStyle = 'hsla(' + d.hue + ', 90%, 70%, ' + d.a + ')';
-        ctx.fill();
-      });
+    function step(now) {
       requestAnimationFrame(step);
+      ctx.clearRect(0, 0, w, h);
+      for (let i = 0; i < N; i++) {
+        const p = pts[i];
+        p.z -= p.v;
+        if (p.z <= 0.02) { p.z = 1; p.x = Math.random() * 2 - 1; p.y = Math.random() * 2 - 1; }
+        const s = FOCAL / (FOCAL + p.z);
+        const sx = p.x * s * (w / 2) + w / 2;
+        const sy = p.y * s * (h / 2) + h / 2;
+        const base = 0.16 + s * 0.5;
+        const twinkle = 0.72 + 0.28 * Math.sin(now * 0.001 + p.tw);
+        const a = (base * twinkle).toFixed(3);
+        ctx.beginPath();
+        ctx.arc(sx, sy, 0.5 + s * 1.2, 0, Math.PI * 2);
+        ctx.fillStyle = p.amber
+          ? 'rgba(245,185,60,' + a + ')'
+          : 'rgba(154,164,178,' + (base * twinkle * 0.7).toFixed(3) + ')';
+        ctx.fill();
+      }
     }
-    step();
+    requestAnimationFrame(step);
+  }
+
+  // Reveal-on-scroll for tiles: fade + translate up ONCE (unobserve after first
+  // intersection). Skipped entirely for reduced motion / no IntersectionObserver.
+  function initTileReveal() {
+    if (prefersReducedMotion()) return;
+    if (!('IntersectionObserver' in window)) return;
+    const tiles = tileGrid.querySelectorAll('.tile');
+    if (!tiles.length) return;
+    const io = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('is-in');
+          io.unobserve(entry.target);
+        }
+      });
+    }, { root: ccMain || null, threshold: 0.01 });
+    tiles.forEach((tile, i) => {
+      tile.classList.add('tile--pre');
+      // Stagger only the opacity/translate reveal (via a custom prop), so the
+      // hover transform/box-shadow transitions stay at 0-delay and never lag.
+      tile.style.setProperty('--reveal-delay', ((i % 6) * 34) + 'ms');
+      io.observe(tile);
+    });
   }
 
   function compact(text, max) {
@@ -2300,9 +2373,9 @@
     const id = await resolveOnlineTargetId();
     if (!id) {
       // No phone is online — skip the relay calls (they would just queue up).
-      if (bEl) bEl.textContent = '🔋 —';
-      if (sEl) sEl.textContent = '💾 —';
-      if (nEl) nEl.textContent = '📶 —';
+      if (bEl) bEl.textContent = 'BAT —';
+      if (sEl) sEl.textContent = 'STO —';
+      if (nEl) nEl.textContent = 'NET —';
       return;
     }
     // Serialize: run ONE command at a time so a single command poller is active
@@ -2317,9 +2390,9 @@
     ]) {
       set(await safeCommand(cmd, id, { log: false }));
     }
-    if (bEl) bEl.textContent = battery ? ('🔋 ' + summarizeBattery(battery)) : '🔋 —';
-    if (sEl) sEl.textContent = storage ? ('💾 ' + compact(storage, 26)) : '💾 —';
-    if (nEl) nEl.textContent = network ? ('📶 ' + compact(network, 22)) : '📶 —';
+    if (bEl) bEl.textContent = battery ? ('BAT ' + summarizeBattery(battery)) : 'BAT —';
+    if (sEl) sEl.textContent = storage ? ('STO ' + compact(storage, 26)) : 'STO —';
+    if (nEl) nEl.textContent = network ? ('NET ' + compact(network, 22)) : 'NET —';
   }
 
   // ---------------------------------------------------------------------------
@@ -2388,7 +2461,7 @@
     // "Clear" affordance.
     const clear = makeButton('🗑 Clear history', () => {
       clearHistory();
-      enterView('🕘 History', null, openHistory);
+      enterView('History', null, openHistory);
     }, 'tc-btn');
     box.appendChild(clear);
     scope.result.appendChild(box);
@@ -2554,9 +2627,9 @@
 
   function renderDeviceStatus(statusEl, battery, storage, network) {
     statusEl.innerHTML = '';
-    statusEl.appendChild(el('span', 'device-card__stat', '🔋 ' + (battery ? summarizeBattery(battery) : '—')));
-    statusEl.appendChild(el('span', 'device-card__stat', '💾 ' + (storage ? compact(storage, 18) : '—')));
-    statusEl.appendChild(el('span', 'device-card__stat', '📶 ' + (network ? compact(network, 16) : '—')));
+    statusEl.appendChild(el('span', 'device-card__stat', 'BAT ' + (battery ? summarizeBattery(battery) : '—')));
+    statusEl.appendChild(el('span', 'device-card__stat', 'STO ' + (storage ? compact(storage, 18) : '—')));
+    statusEl.appendChild(el('span', 'device-card__stat', 'NET ' + (network ? compact(network, 16) : '—')));
   }
 
   // ---- Sound + micro-animations support (#10) --------------------------------
@@ -2691,7 +2764,7 @@
     const key = new THREE.DirectionalLight(0xffffff, 1.7);
     key.position.set(3, 5, 4);
     scene.add(key);
-    const rim = new THREE.DirectionalLight(0x5f83ff, 1.0);
+    const rim = new THREE.DirectionalLight(0xf5b93c, 0.8);
     rim.position.set(-4, 2, -3);
     scene.add(rim);
 
@@ -2844,29 +2917,29 @@
     const W = state.screenCanvas.width, H = state.screenCanvas.height;
     ctx.clearRect(0, 0, W, H);
     const grad = ctx.createLinearGradient(0, 0, 0, H);
-    grad.addColorStop(0, '#0f1c33');
-    grad.addColorStop(1, '#080d1a');
+    grad.addColorStop(0, '#0c111a');
+    grad.addColorStop(1, '#070b10');
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, W, H);
-    ctx.fillStyle = '#1a2740';
+    ctx.fillStyle = '#1c2532';
     ctx.beginPath();
     ctx.arc(W / 2, 24, 22, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = '#7aa5ff';
-    ctx.font = '600 26px system-ui, -apple-system, Segoe UI, sans-serif';
+    ctx.fillStyle = '#f5b93c';
+    ctx.font = '600 26px "Space Grotesk", system-ui, -apple-system, "Segoe UI", sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     let label = String(name || '—');
     if (label.length > 14) label = label.slice(0, 13) + '…';
     ctx.fillText(label, W / 2, 96);
-    ctx.fillStyle = '#eaf0fb';
-    ctx.font = '800 56px system-ui, -apple-system, Segoe UI, sans-serif';
+    ctx.fillStyle = '#e9eef5';
+    ctx.font = '800 56px "Space Grotesk", system-ui, -apple-system, "Segoe UI", sans-serif';
     ctx.fillText(String(batt || '—'), W / 2, 190);
-    ctx.fillStyle = '#94a3b8';
-    ctx.font = '600 22px system-ui, -apple-system, Segoe UI, sans-serif';
+    ctx.fillStyle = '#9aa4b2';
+    ctx.font = '600 22px "Space Grotesk", system-ui, -apple-system, "Segoe UI", sans-serif';
     ctx.fillText('BATTERY', W / 2, 244);
-    ctx.fillStyle = '#5a6b8c';
-    ctx.font = '26px system-ui, sans-serif';
+    ctx.fillStyle = '#5c6775';
+    ctx.font = '26px "Space Grotesk", system-ui, sans-serif';
     ctx.fillText('📱', W / 2, 316);
     if (state.screenTex) state.screenTex.needsUpdate = true;
   }
@@ -2951,6 +3024,7 @@
           if (card) card.style.transform = '';
         }
         s.video.style.transform = '';
+        if (s.video._hud) { try { s.video._hud.stop(); } catch (err) { /* ignore */ } }
         s.video.srcObject = null;
       }
     } catch (err) { /* ignore */ }
@@ -2983,6 +3057,11 @@
     if (video.srcObject !== remoteStream) video.srcObject = remoteStream;
     const box = video && video.closest ? video.closest('.live') : null;
     if (box) box.classList.add('live--streaming');
+    // Start the recon-feed HUD once per session (ontrack can fire per-track).
+    if (s && !s._hudStarted && s.video && s.video._hud) {
+      s._hudStarted = true;
+      try { s.video._hud.start(s.video); } catch (err) { /* ignore */ }
+    }
     // Screen share has no mic, so skip the tap-to-unmute/mic dance entirely.
     if (s && s.mode === 'screen') {
       try { video.muted = false; } catch (err) { /* ignore */ }
@@ -3040,6 +3119,82 @@
         status.title = '';
       } catch (err) { /* ignore */ }
     });
+  }
+
+  // Zero-padded elapsed clock (HH:MM:SS) for the live recon-feed HUD.
+  function fmtClock(sec) {
+    const s = Math.max(0, Math.floor(sec));
+    const hh = String(Math.floor(s / 3600)).padStart(2, '0');
+    const mm = String(Math.floor((s % 3600) / 60)).padStart(2, '0');
+    const ss = String(s % 60).padStart(2, '0');
+    return hh + ':' + mm + ':' + ss;
+  }
+
+  // Recon-feed chrome shared by Live Camera + Live Screen: corner targeting
+  // brackets, a LIVE badge + elapsed clock, and a bottom HUD strip
+  // (resolution · fps). `pointer-events:none`; only text updates once/tick.
+  function buildLiveHud(stage) {
+    const card = stage.querySelector('.live__card');
+    if (!card) return null;
+
+    ['tl', 'tr', 'bl', 'br'].forEach((c) => {
+      card.appendChild(el('span', 'live__corner live__corner--' + c));
+    });
+
+    const badge = el('span', 'live__badge');
+    badge.appendChild(el('i', 'live__badge-dot'));
+    badge.appendChild(document.createTextNode('LIVE'));
+    const clock = el('span', 'live__clock', '00:00:00');
+    const top = el('div', 'live__hud live__hud--top');
+    top.appendChild(badge);
+    top.appendChild(clock);
+
+    const res = el('span', 'live__res', '— × —');
+    const fps = el('span', 'live__fps', '— fps');
+    const bot = el('div', 'live__hud live__hud--bot');
+    bot.appendChild(res);
+    bot.appendChild(fps);
+
+    card.appendChild(top);
+    card.appendChild(bot);
+
+    let clockTimer = 0, fpsTimer = 0, startedAt = 0, fpsFrames = 0, fpsLast = 0, lastRes = '';
+
+    function tickFps() {
+      fpsFrames++;
+      const now = performance.now();
+      if (now - fpsLast >= 1000) {
+        fps.textContent = Math.round(fpsFrames * 1000 / (now - fpsLast)) + ' fps';
+        fpsFrames = 0;
+        fpsLast = now;
+      }
+      fpsTimer = requestAnimationFrame(tickFps);
+    }
+
+    return {
+      start(video) {
+        startedAt = performance.now();
+        lastRes = '';
+        clearInterval(clockTimer);
+        clockTimer = setInterval(() => {
+          clock.textContent = fmtClock((performance.now() - startedAt) / 1000);
+          const vw = video.videoWidth, vh = video.videoHeight;
+          const r = (vw && vh) ? (vw + ' × ' + vh) : '— × —';
+          if (r !== lastRes) { lastRes = r; res.textContent = r; }
+        }, 250);
+        fpsFrames = 0;
+        fpsLast = performance.now();
+        cancelAnimationFrame(fpsTimer);
+        fpsTimer = requestAnimationFrame(tickFps);
+      },
+      stop() {
+        clearInterval(clockTimer); clockTimer = 0;
+        cancelAnimationFrame(fpsTimer); fpsTimer = 0;
+        clock.textContent = '00:00:00';
+        res.textContent = '— × —';
+        fps.textContent = '— fps';
+      },
+    };
   }
 
   // Build the Live Camera / Live Audio tile view.
@@ -3101,6 +3256,7 @@
       mediaWrap.appendChild(stage);
       enableLiveTilt(stage);
       fullscreenEl = stage; // fullscreen targets the whole stage (video + controls)
+      video._hud = buildLiveHud(stage);
     } else {
       mediaWrap.appendChild(video); // audio-only: hidden player, controls only
     }
@@ -3323,8 +3479,8 @@
       if (!r.width || !r.height) return;
       const px = (e.clientX - r.left) / r.width;
       const py = (e.clientY - r.top) / r.height;
-      const rx = ((0.5 - py) * 8).toFixed(2); // tilt up/down (±4deg)
-      const ry = ((px - 0.5) * 10).toFixed(2); // tilt left/right (±5deg)
+      const rx = ((0.5 - py) * 6).toFixed(2); // tilt up/down (±3deg)
+      const ry = ((px - 0.5) * 7).toFixed(2); // tilt left/right (±3.5deg)
       set(rx, ry);
     });
     stage.addEventListener('pointerleave', reset);
@@ -4288,6 +4444,7 @@
   initVoiceInput();
 
   renderGrid();
+  initTileReveal();
   initParticles();
   initSound();
 
