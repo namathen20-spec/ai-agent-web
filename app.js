@@ -2927,6 +2927,9 @@
 
   // Active session: { ws, pc, video, timer, negTimer, gotOffer, remoteSet, pendingIce, deviceId, mode } or null.
   let liveStream = null;
+  // Tear-down for the document/element listeners registered by buildLiveAudioControls
+  // for the current Live Camera/Screen/Audio view (set on open, cleared on close).
+  let liveControlsCleanup = null;
   // Start-lock so a double-tap on Start can't orphan a half-open WebRTC session.
   let liveBusy = false;
 
@@ -2957,6 +2960,20 @@
         : (s.mode === 'audio' ? 'live_audio stop' : 'live_camera stop');
       safeCommand(stopCmd, s.deviceId, { log: false });
     } catch (err) { /* ignore */ }
+  }
+
+  // Full teardown for the Live Camera / Live Screen / Live Audio view. Runs when
+  // the view is closed (Back). liveCleanup() alone only drops the active WebRTC
+  // session; the audio controls' document/element listeners (registered once per
+  // view by buildLiveAudioControls) live for the whole view, so they are released
+  // here — otherwise every open/close leaks a document-level `fullscreenchange`
+  // handler that keeps firing syncFs() against a detached control bar.
+  function closeLiveView() {
+    liveCleanup();
+    if (liveControlsCleanup) {
+      try { liveControlsCleanup(); } catch (err) { /* ignore */ }
+      liveControlsCleanup = null;
+    }
   }
 
   // Wire a remote MediaStream into the <video>, honoring the autoplay policy:
@@ -3088,7 +3105,9 @@
       mediaWrap.appendChild(video); // audio-only: hidden player, controls only
     }
 
-    const controls = buildLiveAudioControls(video, fullscreenEl);
+    const ctl = buildLiveAudioControls(video, fullscreenEl);
+    liveControlsCleanup = ctl.cleanup;
+    const controls = ctl.bar;
 
     box.appendChild(btnRow);
     box.appendChild(status);
@@ -3169,7 +3188,8 @@
       applyVol(n + d);
     }
 
-    vol.addEventListener('input', () => applyVol(parseInt(vol.value, 10) || 0));
+    const onVolInput = () => applyVol(parseInt(vol.value, 10) || 0);
+    vol.addEventListener('input', onVolInput);
     video.addEventListener('volumechange', syncFromVideo);
 
     bar.appendChild(speaker);
@@ -3258,7 +3278,25 @@
     }
 
     syncFromVideo();
-    return bar;
+
+    // Removes every listener this view registered so repeated open/close of Live
+    // Camera / Live Screen can't leak document-level (fullscreenchange) handlers
+    // that keep firing syncFs() against a detached control bar.
+    function cleanup() {
+      window.clearTimeout(hideTimer);
+      vol.removeEventListener('input', onVolInput);
+      video.removeEventListener('volumechange', syncFromVideo);
+      document.removeEventListener('fullscreenchange', syncFs);
+      document.removeEventListener('webkitfullscreenchange', syncFs);
+      document.removeEventListener('msfullscreenchange', syncFs);
+      if (fullscreenEl) {
+        fullscreenEl.removeEventListener('pointermove', revealControls);
+        fullscreenEl.removeEventListener('pointerdown', revealControls);
+      }
+      bar.removeEventListener('pointerenter', revealControls);
+    }
+
+    return { bar, cleanup };
   }
 
   // 3D tilt for the live stage: rotateX/rotateY follow the pointer inside the
@@ -4001,9 +4039,9 @@
     { id: 'map', emoji: '📍', label: 'Map', sub: 'Live GPS history', color: '#3fb96a', build: openMap },
     { id: 'tasks', emoji: '⏰', label: 'Tasks', sub: 'Scheduled commands', color: '#f2b13c', build: openTasks },
     { id: 'phone3d', emoji: '🛰️', label: 'Phone 3D', sub: 'Live phone model', color: '#38b2ac', onClose: disposePhone3d, build: openPhone3d },
-    { id: 'liveaudio', emoji: '🎙️', label: 'Live Audio', sub: 'WebRTC mic streaming', color: '#38b2ac', onClose: liveCleanup, build: (s) => openLiveStream(s, 'audio') },
-    { id: 'livescreen', emoji: '🖥️', label: 'Live Screen', sub: 'WebRTC 30fps screen share', color: '#38bdf8', onClose: liveCleanup, build: (s) => openLiveStream(s, 'screen') },
-    { id: 'livecamera', emoji: '🎥', label: 'Live Camera', sub: 'WebRTC video + mic', color: '#ff6b6b', onClose: liveCleanup, build: (s) => openLiveStream(s, 'camera') },
+    { id: 'liveaudio', emoji: '🎙️', label: 'Live Audio', sub: 'WebRTC mic streaming', color: '#38b2ac', onClose: closeLiveView, build: (s) => openLiveStream(s, 'audio') },
+    { id: 'livescreen', emoji: '🖥️', label: 'Live Screen', sub: 'WebRTC 30fps screen share', color: '#38bdf8', onClose: closeLiveView, build: (s) => openLiveStream(s, 'screen') },
+    { id: 'livecamera', emoji: '🎥', label: 'Live Camera', sub: 'WebRTC video + mic', color: '#ff6b6b', onClose: closeLiveView, build: (s) => openLiveStream(s, 'camera') },
   ];
 
   // ---------------------------------------------------------------------------
