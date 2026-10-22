@@ -120,7 +120,7 @@ html, body {
 *::-webkit-scrollbar-track { background: transparent; }
 
 /* =====================================================================
-   Animated background — floating glow orbs + particle canvas
+   Animated background — floating glow orbs + WebGL 3D hero
    ===================================================================== */
 .bg-effects {
   position: fixed;
@@ -171,12 +171,35 @@ html, body {
   66%      { transform: translate(-40px, -30px) scale(0.94); }
 }
 
-#particles {
+/* Real Three.js hero layer — a transparent WebGL canvas composited above the
+   gradient/orbs but below the UI. `pointer-events:none` keeps it invisible to
+   input; the renderer sizes the drawing buffer while CSS owns the layout. */
+.hero-3d {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+.hero-3d canvas {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
+  display: block;
+  pointer-events: none;
 }
+
+/* Cheap "bloom" — a static radial-gradient glow where the globe lives. */
+.bg-glow {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background:
+    radial-gradient(620px 460px at 50% 40%, rgba(245, 185, 60, 0.10), transparent 64%),
+    radial-gradient(900px 560px at 50% 112%, rgba(245, 185, 60, 0.05), transparent 60%);
+  pointer-events: none;
+}
+:root[data-theme="light"] .bg-glow { opacity: 0.45; }
 
 /* =====================================================================
    Password gate (full-screen lock overlay)

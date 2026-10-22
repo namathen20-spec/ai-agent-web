@@ -2261,58 +2261,240 @@
     });
   }
 
-  // Lightweight particle field behind the UI (skipped for reduced-motion and
-  // small screens — a full-screen rAF loop with per-particle shadows is a
-  // reliable source of jank on low-power mobile GPUs; the static glow orbs remain).
-  function initParticles() {
-    const canvas = document.getElementById('particles');
-    if (!canvas || prefersReducedMotion()) return;
+  // ---------------------------------------------------------------------------
+  // Real Three.js hero — an immersive background (globe + low-poly floaters +
+  // interactive particle field) behind the UI. Desktop-only, lazily loaded, and
+  // fully skipped for reduced-motion / non-fine pointers (mobile & tablet) / no
+  // WebGL — those fall back to the static CSS gradients + glow orbs (zero JS).
+  // ---------------------------------------------------------------------------
+  function initHero3d() {
+    if (prefersReducedMotion()) return;
+    if (!(window.matchMedia && window.matchMedia('(pointer: fine)').matches)) return;
     if (window.matchMedia && window.matchMedia('(max-width: 760px)').matches) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    let w = 0, h = 0;
-    function resize() {
-      w = canvas.width = window.innerWidth;
-      h = canvas.height = window.innerHeight;
-    }
-    resize();
-    window.addEventListener('resize', resize);
+    const host = document.getElementById('hero3d');
+    if (!host) return;
 
-    // Perspective starfield: ~110 points drifting toward the viewer through a
-    // focal plane. Single-path drawing with no shadowBlur → cheap on the GPU and
-    // reads as genuine 3D depth. Amber/dim-gray only (single signal palette).
-    const N = 110;
-    const FOCAL = 1.6;
-    const pts = Array.from({ length: N }, () => ({
-      x: Math.random() * 2 - 1,
-      y: Math.random() * 2 - 1,
-      z: Math.random(),
-      v: Math.random() * 0.0006 + 0.00025,
-      amber: Math.random() < 0.42,
-      tw: Math.random() * Math.PI * 2,
+    // Probe WebGL before pulling Three.js off the network.
+    let webgl = false;
+    try {
+      const t = document.createElement('canvas');
+      webgl = !!(window.WebGLRenderingContext && (t.getContext('webgl') || t.getContext('experimental-webgl')));
+    } catch (err) { webgl = false; }
+    if (!webgl) return;
+
+    loadThree().then((THREE) => {
+      try { initHeroScene(THREE, host); }
+      catch (err) { /* decorative only — fail silently, static fallback stays */ }
+    }).catch(() => { /* CDN + self-hosted both failed; keep the static fallback */ });
+  }
+
+  function initHeroScene(THREE, host) {
+    const w = host.clientWidth || window.innerWidth;
+    const h = host.clientHeight || window.innerHeight;
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.setSize(w, h, false); // false → CSS (.hero-3d canvas) owns layout, not inline styles
+    renderer.setClearColor(0x000000, 0); // transparent — CSS gradients show through
+    const canvas = renderer.domElement;
+    canvas.setAttribute('aria-hidden', 'true');
+    host.appendChild(canvas);
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(55, w / h, 0.1, 100);
+    camera.position.set(0, 0, 7.5);
+
+    // Parent rig — everything eases toward the cursor + scroll for parallax depth.
+    const rig = new THREE.Group();
+    scene.add(rig);
+
+    // Lights: ambient fill + white key + amber rim + accent point → real shading.
+    scene.add(new THREE.AmbientLight(0x33405a, 1.4));
+    const key = new THREE.DirectionalLight(0xffffff, 1.3);
+    key.position.set(4, 5, 6);
+    scene.add(key);
+    const rim = new THREE.DirectionalLight(0xf5b93c, 0.7);
+    rim.position.set(-4, -2, -3);
+    scene.add(rim);
+    const accentLight = new THREE.PointLight(0xf5b93c, 30, 0, 2);
+    accentLight.position.set(-2.5, 1.2, 2.5);
+    scene.add(accentLight);
+
+    // Fibonacci point cloud on a sphere → dotted/sparkle "globe" look.
+    function sphereCloud(radius, count) {
+      const arr = new Float32Array(count * 3);
+      const golden = Math.PI * (3 - Math.sqrt(5));
+      for (let i = 0; i < count; i++) {
+        const y = 1 - (i / (count - 1)) * 2;
+        const r = Math.sqrt(Math.max(0, 1 - y * y));
+        const th = golden * i;
+        arr[i * 3] = Math.cos(th) * r * radius;
+        arr[i * 3 + 1] = y * radius;
+        arr[i * 3 + 2] = Math.sin(th) * r * radius;
+      }
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.BufferAttribute(arr, 3));
+      return g;
+    }
+
+    // Central globe: emissive solid core + dotted points + faint wireframe cage.
+    const globe = new THREE.Group();
+    globe.add(new THREE.Mesh(
+      new THREE.SphereGeometry(1.42, 32, 24),
+      new THREE.MeshStandardMaterial({
+        color: 0x0b0804, emissive: 0xf5b93c, emissiveIntensity: 0.5,
+        roughness: 0.55, metalness: 0.15,
+      })
+    ));
+    globe.add(new THREE.Points(
+      sphereCloud(1.6, 360),
+      new THREE.PointsMaterial({
+        color: 0xf5b93c, size: 0.035, sizeAttenuation: true, transparent: true,
+        opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false,
+      })
+    ));
+    globe.add(new THREE.Mesh(
+      new THREE.IcosahedronGeometry(1.62, 1),
+      new THREE.MeshBasicMaterial({
+        color: 0xf5b93c, wireframe: true, transparent: true, opacity: 0.2, depthWrite: false,
+      })
+    ));
+    globe.position.set(0, 0.2, -1);
+    rig.add(globe);
+
+    // Low-poly floaters drifting at different depths (icosahedrons + torus knots).
+    const floaters = [];
+    const floaterSpecs = [
+      { type: 'ico', r: 0.45 }, { type: 'knot', a: 0.36, b: 0.11 }, { type: 'ico', r: 0.28 },
+      { type: 'ico', r: 0.55 }, { type: 'knot', a: 0.24, b: 0.07 }, { type: 'ico', r: 0.32 },
+      { type: 'ico', r: 0.48 }, { type: 'ico', r: 0.22 },
+    ];
+    floaterSpecs.forEach((s, i) => {
+      const geo = s.type === 'knot'
+        ? new THREE.TorusKnotGeometry(s.a, s.b, 40, 6)
+        : new THREE.IcosahedronGeometry(s.r, 0); // detail 0 → 20 tris (low-poly)
+      const warm = i % 2 === 0;
+      const mat = new THREE.MeshStandardMaterial({
+        color: warm ? 0x2a2010 : 0x26303f,
+        emissive: 0xf5b93c, emissiveIntensity: warm ? 0.34 : 0.1,
+        roughness: 0.42, metalness: 0.5, flatShading: true,
+      });
+      const m = new THREE.Mesh(geo, mat);
+      m.position.set(
+        (i % 2 ? 1 : -1) * (2.4 + (i % 3) * 1.15),
+        ((i % 4) - 1.5) * 1.3,
+        -1.8 - (i % 5) * 1.1
+      );
+      m.userData = {
+        rot: 0.004 + Math.random() * 0.006,
+        axisX: 0.3 + Math.random() * 0.7,
+        axisY: 0.3 + Math.random() * 0.7,
+        drift: 0.5 + Math.random() * 1.3,
+        phase: Math.random() * Math.PI * 2,
+        base: m.position.clone(),
+      };
+      rig.add(m);
+      floaters.push(m);
+    });
+
+    // Interactive particle field — cool slate cloud + amber shell cloud.
+    const particleGroup = new THREE.Group();
+    const coolGeo = new THREE.BufferGeometry();
+    const coolPos = new Float32Array(220 * 3);
+    for (let i = 0; i < 220; i++) {
+      coolPos[i * 3] = (Math.random() - 0.5) * 18;
+      coolPos[i * 3 + 1] = (Math.random() - 0.5) * 12;
+      coolPos[i * 3 + 2] = (Math.random() - 0.5) * 9;
+    }
+    coolGeo.setAttribute('position', new THREE.BufferAttribute(coolPos, 3));
+    particleGroup.add(new THREE.Points(coolGeo, new THREE.PointsMaterial({
+      color: 0x9fb0cf, size: 0.04, sizeAttenuation: true, transparent: true,
+      opacity: 0.45, blending: THREE.AdditiveBlending, depthWrite: false,
+    })));
+    const amberCloud = new THREE.Points(sphereCloud(7, 130), new THREE.PointsMaterial({
+      color: 0xf5b93c, size: 0.05, sizeAttenuation: true, transparent: true,
+      opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false,
     }));
-    function step(now) {
-      requestAnimationFrame(step);
-      ctx.clearRect(0, 0, w, h);
-      for (let i = 0; i < N; i++) {
-        const p = pts[i];
-        p.z -= p.v;
-        if (p.z <= 0.02) { p.z = 1; p.x = Math.random() * 2 - 1; p.y = Math.random() * 2 - 1; }
-        const s = FOCAL / (FOCAL + p.z);
-        const sx = p.x * s * (w / 2) + w / 2;
-        const sy = p.y * s * (h / 2) + h / 2;
-        const base = 0.16 + s * 0.5;
-        const twinkle = 0.72 + 0.28 * Math.sin(now * 0.001 + p.tw);
-        const a = (base * twinkle).toFixed(3);
-        ctx.beginPath();
-        ctx.arc(sx, sy, 0.5 + s * 1.2, 0, Math.PI * 2);
-        ctx.fillStyle = p.amber
-          ? 'rgba(245,185,60,' + a + ')'
-          : 'rgba(154,164,178,' + (base * twinkle * 0.7).toFixed(3) + ')';
-        ctx.fill();
+    amberCloud.position.set(0, 0, -3);
+    particleGroup.add(amberCloud);
+    rig.add(particleGroup);
+
+    // Parallax state + sources.
+    const target = { x: 0, y: 0, scroll: 0 };
+    const cur = { x: 0, y: 0, scroll: 0 };
+    const scroller = document.querySelector('.cc-main');
+    let last = performance.now();
+    let running = document.visibilityState === 'visible';
+
+    function onResize() {
+      const rw = window.innerWidth;
+      const rh = window.innerHeight;
+      renderer.setSize(rw, rh, false);
+      camera.aspect = rw / rh;
+      camera.updateProjectionMatrix();
+    }
+    function onScroll() {
+      if (!scroller) { target.scroll = 0; return; }
+      const max = scroller.scrollHeight - scroller.clientHeight;
+      target.scroll = max > 0 ? scroller.scrollTop / max : 0;
+    }
+    function onVisibility() {
+      running = document.visibilityState === 'visible';
+      if (running) {
+        last = performance.now();
+        requestAnimationFrame(loop);
       }
     }
-    requestAnimationFrame(step);
+
+    window.addEventListener('resize', onResize, { passive: true });
+    if (scroller) scroller.addEventListener('scroll', onScroll, { passive: true });
+    document.addEventListener('visibilitychange', onVisibility);
+    // Pointer writes only two target numbers (no DOM layout reads per event).
+    window.addEventListener('pointermove', (e) => {
+      target.x = (e.clientX / window.innerWidth) * 2 - 1;
+      target.y = (e.clientY / window.innerHeight) * 2 - 1;
+    }, { passive: true });
+    window.addEventListener('pointerleave', () => { target.x = 0; target.y = 0; }, { passive: true });
+
+    function loop(now) {
+      if (!running) return;
+      requestAnimationFrame(loop);
+      const t = now || performance.now();
+      const dt = Math.min(0.05, (t - last) / 1000) || 0.016;
+      last = t;
+      const travel = t * 0.001;
+
+      // Ease rig toward cursor + scroll (lerp → true 3D parallax depth).
+      cur.x += (target.x - cur.x) * 0.05;
+      cur.y += (target.y - cur.y) * 0.05;
+      cur.scroll += (target.scroll - cur.scroll) * 0.06;
+      rig.rotation.y += (cur.x * 0.35 - rig.rotation.y) * 0.04;
+      rig.rotation.x += (-cur.y * 0.22 - rig.rotation.x) * 0.04;
+      rig.position.y = cur.scroll * 0.9;
+
+      // Globe: slow spin + gentle breath.
+      globe.rotation.y += dt * 0.12;
+      globe.rotation.x += dt * 0.03;
+      globe.scale.setScalar(1 + Math.sin(travel * 0.6) * 0.015);
+
+      // Floaters: independent spin + vertical drift.
+      for (let i = 0; i < floaters.length; i++) {
+        const m = floaters[i];
+        const u = m.userData;
+        m.rotation.x += u.rot * u.axisX * dt * 60;
+        m.rotation.y += u.rot * u.axisY * dt * 60;
+        m.position.y = u.base.y + Math.sin(travel * u.drift + u.phase) * 0.6;
+      }
+
+      // Particles: slow rotation + mouse-responsive shift.
+      particleGroup.rotation.y += dt * 0.02;
+      particleGroup.rotation.x = cur.y * 0.15;
+      particleGroup.position.x = cur.x * 0.4;
+      particleGroup.position.y = -cur.y * 0.25;
+
+      renderer.render(scene, camera);
+    }
+    requestAnimationFrame(loop);
   }
 
   // Reveal-on-scroll for tiles: fade + translate up ONCE (unobserve after first
@@ -2682,15 +2864,26 @@
   function loadThree() {
     if (window.THREE) return Promise.resolve(window.THREE);
     if (threePromise) return threePromise;
+    // Lazy, non-blocking load. CDN-first (three@0.160.0), falling back to the
+    // byte-identical self-hosted copy so the 3D views still work when the CDN
+    // is unreachable. The `window.THREE` global is shared by the hero + Phone 3D.
+    const srcs = [
+      'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js',
+      './three.min.js',
+    ];
     threePromise = new Promise((resolve, reject) => {
-      const s = document.createElement('script');
-      // Self-hosted copy (pinned three@0.160.0) — removes the jsDelivr CDN
-      // dependency so the 3D view no longer loads third-party code at runtime.
-      s.src = './three.min.js';
-      s.async = true;
-      s.onload = () => resolve(window.THREE);
-      s.onerror = () => { threePromise = null; reject(new Error('Three.js failed to load')); };
-      document.head.appendChild(s);
+      let idx = 0;
+      const attempt = () => {
+        if (window.THREE) { resolve(window.THREE); return; }
+        if (idx >= srcs.length) { threePromise = null; reject(new Error('Three.js failed to load')); return; }
+        const s = document.createElement('script');
+        s.src = srcs[idx++];
+        s.async = true;
+        s.onload = attempt;
+        s.onerror = attempt;
+        document.head.appendChild(s);
+      };
+      attempt();
     });
     return threePromise;
   }
@@ -4445,8 +4638,13 @@
 
   renderGrid();
   initTileReveal();
-  initParticles();
   initSound();
+
+  // Defer the 3D hero until after first paint (`load`) so the UI renders
+  // instantly; initHero3d() then lazily loads Three.js and builds the scene on
+  // desktop only (detected internally: pointer:fine, no reduced-motion, WebGL).
+  if (document.readyState === 'complete') initHero3d();
+  else window.addEventListener('load', initHero3d, { once: true });
 
   refreshMcpStatus();
   renderMcpTools();

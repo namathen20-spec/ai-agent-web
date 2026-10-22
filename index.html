@@ -34,7 +34,7 @@
     rel="stylesheet"
   />
 
-  <link rel="stylesheet" href="style.css?v=21" />
+  <link rel="stylesheet" href="style.css?v=22" />
 </head>
 <body>
   <!-- ===================== Security-key gate (lock screen) ===================== -->
@@ -63,12 +63,13 @@
     </form>
   </div>
 
-  <!-- ===================== Animated background (orbs + particles) ===================== -->
+  <!-- ===================== Animated background (glow orbs + real 3D hero) ===================== -->
   <div class="bg-effects" aria-hidden="true">
     <div class="orb orb--1"></div>
     <div class="orb orb--2"></div>
     <div class="orb orb--3"></div>
-    <canvas id="particles"></canvas>
+    <div class="bg-glow" aria-hidden="true"></div>
+    <div class="hero-3d" id="hero3d" aria-hidden="true"></div>
   </div>
 
   <!-- ===================== Control Center shell ===================== -->
@@ -240,6 +241,6 @@
     </form>
   </aside>
 
-  <script src="app.js?v=45"></script>
+  <script src="app.js?v=46"></script>
 </body>
 </html>
