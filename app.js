@@ -1386,8 +1386,8 @@
     el.textContent = message;
     el.style.cssText =
       'position:fixed;left:50%;bottom:90px;transform:translateX(-50%);' +
-      'background:rgba(13,19,29,0.95);color:#e9eef5;padding:8px 14px;' +
-      'border:1px solid #1c2532;border-radius:6px;font-size:13px;z-index:1000;pointer-events:none;' +
+      'background:rgba(5,11,6,0.95);color:#d6f0d6;padding:8px 14px;' +
+      'border:1px solid #142014;border-radius:6px;font-size:13px;z-index:1000;pointer-events:none;' +
       'box-shadow:inset 0 1px 0 rgba(255,255,255,0.05),0 8px 24px rgba(0,0,0,0.35);transition:opacity 0.3s ease;';
     document.body.appendChild(el);
     setTimeout(() => {
@@ -2229,9 +2229,12 @@
     livecamera: tileSvg('<rect x="2.5" y="6.5" width="13" height="11" rx="2"/><path d="M15.5 11l6-3.5v9l-6-3.5"/><circle cx="7" cy="12" r="1.3"/>'),
   };
 
-  function buildTile(spec, onOpen) {
+  function buildTile(spec, onOpen, idx) {
     const tile = el('button', 'tile');
     tile.type = 'button';
+    if (typeof idx === 'number') {
+      tile.appendChild(el('span', 'tile__index', String(idx + 1).padStart(2, '0')));
+    }
     const icon = TILE_ICONS[spec.id];
     if (icon) {
       const glyph = el('span', 'tile__icon');
@@ -2250,12 +2253,12 @@
   function renderGrid() {
     tileGrid.innerHTML = '';
     TOOLS.forEach((tool, i) => {
-      const tile = buildTile(tool, openTool);
+      const tile = buildTile(tool, openTool, i);
       tile.style.animationDelay = (i * 30) + 'ms';
       tileGrid.appendChild(tile);
     });
     SPECIALS.forEach((spec, i) => {
-      const tile = buildTile(spec, (s) => enterView(s.label, s.onClose, s.build));
+      const tile = buildTile(spec, (s) => enterView(s.label, s.onClose, s.build), TOOLS.length + i);
       tile.style.animationDelay = ((TOOLS.length + i) * 30) + 'ms';
       tileGrid.appendChild(tile);
     });
@@ -2309,14 +2312,14 @@
     scene.add(rig);
 
     // Lights: ambient fill + white key + amber rim + accent point → real shading.
-    scene.add(new THREE.AmbientLight(0x33405a, 1.4));
+    scene.add(new THREE.AmbientLight(0x1c331c, 1.4));
     const key = new THREE.DirectionalLight(0xffffff, 1.3);
     key.position.set(4, 5, 6);
     scene.add(key);
-    const rim = new THREE.DirectionalLight(0xf5b93c, 0.7);
+    const rim = new THREE.DirectionalLight(0x33ff66, 0.7);
     rim.position.set(-4, -2, -3);
     scene.add(rim);
-    const accentLight = new THREE.PointLight(0xf5b93c, 30, 0, 2);
+    const accentLight = new THREE.PointLight(0x33ff66, 30, 0, 2);
     accentLight.position.set(-2.5, 1.2, 2.5);
     scene.add(accentLight);
 
@@ -2342,21 +2345,21 @@
     globe.add(new THREE.Mesh(
       new THREE.SphereGeometry(1.42, 32, 24),
       new THREE.MeshStandardMaterial({
-        color: 0x0b0804, emissive: 0xf5b93c, emissiveIntensity: 0.5,
+        color: 0x03100a, emissive: 0x33ff66, emissiveIntensity: 0.5,
         roughness: 0.55, metalness: 0.15,
       })
     ));
     globe.add(new THREE.Points(
       sphereCloud(1.6, 360),
       new THREE.PointsMaterial({
-        color: 0xf5b93c, size: 0.035, sizeAttenuation: true, transparent: true,
+        color: 0x33ff66, size: 0.035, sizeAttenuation: true, transparent: true,
         opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false,
       })
     ));
     globe.add(new THREE.Mesh(
       new THREE.IcosahedronGeometry(1.62, 1),
       new THREE.MeshBasicMaterial({
-        color: 0xf5b93c, wireframe: true, transparent: true, opacity: 0.2, depthWrite: false,
+        color: 0x33ff66, wireframe: true, transparent: true, opacity: 0.2, depthWrite: false,
       })
     ));
     globe.position.set(0, 0.2, -1);
@@ -2375,8 +2378,8 @@
         : new THREE.IcosahedronGeometry(s.r, 0); // detail 0 → 20 tris (low-poly)
       const warm = i % 2 === 0;
       const mat = new THREE.MeshStandardMaterial({
-        color: warm ? 0x2a2010 : 0x26303f,
-        emissive: 0xf5b93c, emissiveIntensity: warm ? 0.34 : 0.1,
+        color: warm ? 0x0d1a0d : 0x0e1a10,
+        emissive: 0x33ff66, emissiveIntensity: warm ? 0.34 : 0.1,
         roughness: 0.42, metalness: 0.5, flatShading: true,
       });
       const m = new THREE.Mesh(geo, mat);
@@ -2408,11 +2411,11 @@
     }
     coolGeo.setAttribute('position', new THREE.BufferAttribute(coolPos, 3));
     particleGroup.add(new THREE.Points(coolGeo, new THREE.PointsMaterial({
-      color: 0x9fb0cf, size: 0.04, sizeAttenuation: true, transparent: true,
+      color: 0x2d5c2d, size: 0.04, sizeAttenuation: true, transparent: true,
       opacity: 0.45, blending: THREE.AdditiveBlending, depthWrite: false,
     })));
     const amberCloud = new THREE.Points(sphereCloud(7, 130), new THREE.PointsMaterial({
-      color: 0xf5b93c, size: 0.05, sizeAttenuation: true, transparent: true,
+      color: 0x33ff66, size: 0.05, sizeAttenuation: true, transparent: true,
       opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false,
     }));
     amberCloud.position.set(0, 0, -3);
@@ -2953,11 +2956,11 @@
     camera.lookAt(0, 0, 0);
     state.camera = camera;
 
-    scene.add(new THREE.AmbientLight(0x9fb0cf, 1.5));
+    scene.add(new THREE.AmbientLight(0x2d5c2d, 1.5));
     const key = new THREE.DirectionalLight(0xffffff, 1.7);
     key.position.set(3, 5, 4);
     scene.add(key);
-    const rim = new THREE.DirectionalLight(0xf5b93c, 0.8);
+    const rim = new THREE.DirectionalLight(0x33ff66, 0.8);
     rim.position.set(-4, 2, -3);
     scene.add(rim);
 
@@ -2986,7 +2989,7 @@
     });
     bodyGeo.computeBoundingBox();
     const frontZ = (bodyGeo.boundingBox && bodyGeo.boundingBox.max) ? bodyGeo.boundingBox.max.z : (bodyD / 2 + bevel);
-    const body = new THREE.Mesh(bodyGeo, new THREE.MeshStandardMaterial({ color: 0x2a3346, metalness: 0.65, roughness: 0.4 }));
+    const body = new THREE.Mesh(bodyGeo, new THREE.MeshStandardMaterial({ color: 0x182418, metalness: 0.65, roughness: 0.4 }));
     phone.add(body);
 
     // Live screen: a 2D canvas texture showing device name + battery %.
@@ -3003,7 +3006,7 @@
     // Dark bezel + glowing screen plane.
     const bezel = new THREE.Mesh(
       new THREE.PlaneGeometry(bodyW * 0.92, bodyH * 0.96),
-      new THREE.MeshBasicMaterial({ color: 0x070a12 })
+      new THREE.MeshBasicMaterial({ color: 0x050705 })
     );
     bezel.position.z = frontZ + 0.006;
     phone.add(bezel);
@@ -3110,29 +3113,29 @@
     const W = state.screenCanvas.width, H = state.screenCanvas.height;
     ctx.clearRect(0, 0, W, H);
     const grad = ctx.createLinearGradient(0, 0, 0, H);
-    grad.addColorStop(0, '#0c111a');
-    grad.addColorStop(1, '#070b10');
+    grad.addColorStop(0, '#0a120a');
+    grad.addColorStop(1, '#050705');
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, W, H);
-    ctx.fillStyle = '#1c2532';
+    ctx.fillStyle = '#142014';
     ctx.beginPath();
     ctx.arc(W / 2, 24, 22, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = '#f5b93c';
-    ctx.font = '600 26px "Space Grotesk", system-ui, -apple-system, "Segoe UI", sans-serif';
+    ctx.fillStyle = '#33ff66';
+    ctx.font = '600 26px "IBM Plex Mono", system-ui, -apple-system, "Segoe UI", sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     let label = String(name || '—');
     if (label.length > 14) label = label.slice(0, 13) + '…';
     ctx.fillText(label, W / 2, 96);
-    ctx.fillStyle = '#e9eef5';
-    ctx.font = '800 56px "Space Grotesk", system-ui, -apple-system, "Segoe UI", sans-serif';
+    ctx.fillStyle = '#d6f0d6';
+    ctx.font = '800 56px "IBM Plex Mono", system-ui, -apple-system, "Segoe UI", sans-serif';
     ctx.fillText(String(batt || '—'), W / 2, 190);
-    ctx.fillStyle = '#9aa4b2';
-    ctx.font = '600 22px "Space Grotesk", system-ui, -apple-system, "Segoe UI", sans-serif';
+    ctx.fillStyle = '#7fa283';
+    ctx.font = '600 22px "IBM Plex Mono", system-ui, -apple-system, "Segoe UI", sans-serif';
     ctx.fillText('BATTERY', W / 2, 244);
-    ctx.fillStyle = '#5c6775';
-    ctx.font = '26px "Space Grotesk", system-ui, sans-serif';
+    ctx.fillStyle = '#455845';
+    ctx.font = '26px "IBM Plex Mono", system-ui, sans-serif';
     ctx.fillText('📱', W / 2, 316);
     if (state.screenTex) state.screenTex.needsUpdate = true;
   }
@@ -3333,6 +3336,7 @@
     ['tl', 'tr', 'bl', 'br'].forEach((c) => {
       card.appendChild(el('span', 'live__corner live__corner--' + c));
     });
+    card.appendChild(el('span', 'live__crosshair'));
 
     const badge = el('span', 'live__badge');
     badge.appendChild(el('i', 'live__badge-dot'));
@@ -4477,7 +4481,7 @@
       themeToggle.title = isLight ? 'Switch to dark theme' : 'Switch to light theme';
       themeToggle.setAttribute('aria-label', themeToggle.title);
     }
-    if (themeColorMeta) themeColorMeta.setAttribute('content', isLight ? '#f4f6fa' : '#070a12');
+    if (themeColorMeta) themeColorMeta.setAttribute('content', isLight ? '#0e1a0e' : '#050705');
   }
 
   function initTheme() {
@@ -4627,6 +4631,21 @@
   if (chatScrim) chatScrim.addEventListener('click', () => setChatOpen(false));
 
   // ---------------------------------------------------------------------------
+  // Status-bar clock (real instrument readout, one text-node update per second)
+  // ---------------------------------------------------------------------------
+  function initStatusClock() {
+    const c = document.getElementById('statusClock');
+    if (!c) return;
+    const pad = (n) => String(n).padStart(2, '0');
+    const tick = () => {
+      const d = new Date();
+      c.textContent = pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+    };
+    tick();
+    setInterval(tick, 1000);
+  }
+
+  // ---------------------------------------------------------------------------
   // Boot
   // ---------------------------------------------------------------------------
 
@@ -4635,6 +4654,7 @@
   renderProviderSelect();
   renderMessages();
   initVoiceInput();
+  initStatusClock();
 
   renderGrid();
   initTileReveal();
