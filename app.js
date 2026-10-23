@@ -76,7 +76,7 @@
       },
     },
     {
-      id: 'screenshot', emoji: '📸', label: 'Screenshot', sub: 'Snap the screen', color: '#4f8cff',
+      id: 'screenshot', emoji: '📸', label: 'Screenshot', sub: 'Snap the screen', color: '#38bdf8',
       build(scope) {
         scope.controls.appendChild(
           makeButton('📸 Capture', () => scope.run('screenshot_link', 'image'), 'tc-btn tc-btn--primary')
@@ -84,7 +84,7 @@
       },
     },
     {
-      id: 'audio', emoji: '🎤', label: 'Audio', sub: 'Record mic · WAV', color: '#ff6b6b',
+      id: 'audio', emoji: '🎤', label: 'Audio', sub: 'Record mic · WAV', color: '#22d3ee',
       build(scope) {
         scope.controls.appendChild(el('span', 'tool-controls__label', 'Duration (seconds)'));
         const seg = makeSeg(['10', '30', '60'], 0);
@@ -95,7 +95,7 @@
       },
     },
     {
-      id: 'screenrecord', emoji: '🎥', label: 'Screen Record', sub: 'Record the screen', color: '#ff8f6b',
+      id: 'screenrecord', emoji: '🎥', label: 'Screen Record', sub: 'Record the screen', color: '#fb7185',
       build(scope) {
         scope.controls.appendChild(el('span', 'tool-controls__label', 'Duration (seconds)'));
         const seg = makeSeg(['10', '30', '60'], 0);
@@ -106,7 +106,7 @@
       },
     },
     {
-      id: 'location', emoji: '📍', label: 'Location', sub: 'GPS + maps link', color: '#3fb96a',
+      id: 'location', emoji: '📍', label: 'Location', sub: 'GPS + maps link', color: '#d946ef',
       build(scope) {
         scope.controls.appendChild(
           makeButton('📡 Capture GPS (auto-on)', () => scope.run('location', 'link'), 'tc-btn tc-btn--primary')
@@ -133,7 +133,7 @@
       },
     },
     {
-      id: 'sms', emoji: '💬', label: 'SMS', sub: 'Read & send texts', color: '#38b2ac',
+      id: 'sms', emoji: '💬', label: 'SMS', sub: 'Read & send texts', color: '#f59e0b',
       build(scope) {
         scope.controls.appendChild(el('span', 'tool-controls__label', 'Read inbox'));
         const count = makeInput('number', 'Count (e.g. 5)', 5);
@@ -158,7 +158,7 @@
       },
     },
     {
-      id: 'calllog', emoji: '📞', label: 'Call Log', sub: 'Recent calls', color: '#7aa5ff',
+      id: 'calllog', emoji: '📞', label: 'Call Log', sub: 'Recent calls', color: '#fb923c',
       build(scope) {
         const count = makeInput('number', 'Count (e.g. 5)', 5);
         scope.controls.appendChild(makeField('Count', count));
@@ -168,7 +168,7 @@
       },
     },
     {
-      id: 'contacts', emoji: '👤', label: 'Contacts', sub: 'All contacts + search', color: '#8b5cf6',
+      id: 'contacts', emoji: '👤', label: 'Contacts', sub: 'All contacts + search', color: '#ec4899',
       build(scope) {
         const search = makeInput('text', 'Filter by name or number', '');
         scope.controls.appendChild(makeField('Search', search));
@@ -191,7 +191,7 @@
       },
     },
     {
-      id: 'files', emoji: '📁', label: 'Files', sub: 'Browse phone storage', color: '#f2b13c',
+      id: 'files', emoji: '📁', label: 'Files', sub: 'Browse phone storage', color: '#8b5cf6',
       build(scope) {
         // --- toolbar (rendered into the controls area) ---
         scope.controls.appendChild(el('span', 'tool-controls__label', 'Folder path'));
@@ -241,7 +241,7 @@
       },
     },
     {
-      id: 'notifs', emoji: '🔔', label: 'Notifications', sub: 'Read phone notifs', color: '#f2b13c',
+      id: 'notifs', emoji: '🔔', label: 'Notifications', sub: 'Read phone notifs', color: '#fbbf24',
       build(scope) {
         const count = makeInput('number', 'Count (e.g. 10)', 10);
         scope.controls.appendChild(makeField('Count', count));
@@ -251,7 +251,7 @@
       },
     },
     {
-      id: 'lifelog', emoji: '📜', label: 'Life Log', sub: 'Start · read · stats', color: '#8b5cf6',
+      id: 'lifelog', emoji: '📜', label: 'Life Log', sub: 'Start · read · stats', color: '#6366f1',
       build(scope) {
         scope.controls.appendChild(makeButton('▶ Start', () => scope.run('lifelog start'), 'tc-btn'));
         scope.controls.appendChild(makeButton('⏹ Stop', () => scope.run('lifelog stop'), 'tc-btn'));
@@ -282,7 +282,7 @@
       },
     },
     {
-      id: 'battery', emoji: '🔋', label: 'Battery / Info', sub: 'Device details', color: '#3fb96a',
+      id: 'battery', emoji: '🔋', label: 'Battery / Info', sub: 'Device details', color: '#14b8a6',
       build(scope) {
         scope.controls.appendChild(
           makeButton('🔋 Get device info', () => scope.runMulti([
@@ -1386,9 +1386,9 @@
     el.textContent = message;
     el.style.cssText =
       'position:fixed;left:50%;bottom:90px;transform:translateX(-50%);' +
-      'background:rgba(5,11,6,0.95);color:#d6f0d6;padding:8px 14px;' +
-      'border:1px solid #142014;border-radius:6px;font-size:13px;z-index:1000;pointer-events:none;' +
-      'box-shadow:inset 0 1px 0 rgba(255,255,255,0.05),0 8px 24px rgba(0,0,0,0.35);transition:opacity 0.3s ease;';
+      'background:rgba(14,13,32,0.96);color:#eef1ff;padding:8px 14px;' +
+      'border:1px solid rgba(91,140,255,0.4);border-radius:6px;font-size:13px;z-index:1000;pointer-events:none;' +
+      'box-shadow:inset 0 1px 0 rgba(255,255,255,0.06),0 8px 24px rgba(0,0,0,0.45),0 0 18px rgba(91,140,255,0.18);transition:opacity 0.3s ease;';
     document.body.appendChild(el);
     setTimeout(() => {
       el.style.opacity = '0';
@@ -2232,6 +2232,8 @@
   function buildTile(spec, onOpen, idx) {
     const tile = el('button', 'tile');
     tile.type = 'button';
+    // Per-category hue: drives the colored left-bar, icon tint + hover glow.
+    if (spec.color) tile.style.setProperty('--tile-hue', spec.color);
     if (typeof idx === 'number') {
       tile.appendChild(el('span', 'tile__index', String(idx + 1).padStart(2, '0')));
     }
@@ -2311,15 +2313,15 @@
     const rig = new THREE.Group();
     scene.add(rig);
 
-    // Lights: ambient fill + white key + amber rim + accent point → real shading.
-    scene.add(new THREE.AmbientLight(0x1c331c, 1.4));
+    // Lights: ambient fill + white key + violet rim + cyan accent point.
+    scene.add(new THREE.AmbientLight(0x20264a, 1.4));
     const key = new THREE.DirectionalLight(0xffffff, 1.3);
     key.position.set(4, 5, 6);
     scene.add(key);
-    const rim = new THREE.DirectionalLight(0x33ff66, 0.7);
+    const rim = new THREE.DirectionalLight(0x8b5cf6, 0.7);
     rim.position.set(-4, -2, -3);
     scene.add(rim);
-    const accentLight = new THREE.PointLight(0x33ff66, 30, 0, 2);
+    const accentLight = new THREE.PointLight(0x22d3ee, 30, 0, 2);
     accentLight.position.set(-2.5, 1.2, 2.5);
     scene.add(accentLight);
 
@@ -2345,21 +2347,21 @@
     globe.add(new THREE.Mesh(
       new THREE.SphereGeometry(1.42, 32, 24),
       new THREE.MeshStandardMaterial({
-        color: 0x03100a, emissive: 0x33ff66, emissiveIntensity: 0.5,
+        color: 0x0a0a1f, emissive: 0x5b8cff, emissiveIntensity: 0.5,
         roughness: 0.55, metalness: 0.15,
       })
     ));
     globe.add(new THREE.Points(
       sphereCloud(1.6, 360),
       new THREE.PointsMaterial({
-        color: 0x33ff66, size: 0.035, sizeAttenuation: true, transparent: true,
+        color: 0x5b8cff, size: 0.035, sizeAttenuation: true, transparent: true,
         opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false,
       })
     ));
     globe.add(new THREE.Mesh(
       new THREE.IcosahedronGeometry(1.62, 1),
       new THREE.MeshBasicMaterial({
-        color: 0x33ff66, wireframe: true, transparent: true, opacity: 0.2, depthWrite: false,
+        color: 0x8b5cf6, wireframe: true, transparent: true, opacity: 0.2, depthWrite: false,
       })
     ));
     globe.position.set(0, 0.2, -1);
@@ -2378,8 +2380,8 @@
         : new THREE.IcosahedronGeometry(s.r, 0); // detail 0 → 20 tris (low-poly)
       const warm = i % 2 === 0;
       const mat = new THREE.MeshStandardMaterial({
-        color: warm ? 0x0d1a0d : 0x0e1a10,
-        emissive: 0x33ff66, emissiveIntensity: warm ? 0.34 : 0.1,
+        color: warm ? 0x141a38 : 0x12243a,
+        emissive: warm ? 0x22d3ee : 0x8b5cf6, emissiveIntensity: warm ? 0.5 : 0.28,
         roughness: 0.42, metalness: 0.5, flatShading: true,
       });
       const m = new THREE.Mesh(geo, mat);
@@ -2400,7 +2402,7 @@
       floaters.push(m);
     });
 
-    // Interactive particle field — cool slate cloud + amber shell cloud.
+    // Interactive particle field — blue slate cloud + violet shell cloud.
     const particleGroup = new THREE.Group();
     const coolGeo = new THREE.BufferGeometry();
     const coolPos = new Float32Array(220 * 3);
@@ -2411,15 +2413,15 @@
     }
     coolGeo.setAttribute('position', new THREE.BufferAttribute(coolPos, 3));
     particleGroup.add(new THREE.Points(coolGeo, new THREE.PointsMaterial({
-      color: 0x2d5c2d, size: 0.04, sizeAttenuation: true, transparent: true,
+      color: 0x4c5bd4, size: 0.04, sizeAttenuation: true, transparent: true,
       opacity: 0.45, blending: THREE.AdditiveBlending, depthWrite: false,
     })));
-    const amberCloud = new THREE.Points(sphereCloud(7, 130), new THREE.PointsMaterial({
-      color: 0x33ff66, size: 0.05, sizeAttenuation: true, transparent: true,
+    const violetShellCloud = new THREE.Points(sphereCloud(7, 130), new THREE.PointsMaterial({
+      color: 0x8b5cf6, size: 0.05, sizeAttenuation: true, transparent: true,
       opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false,
     }));
-    amberCloud.position.set(0, 0, -3);
-    particleGroup.add(amberCloud);
+    violetShellCloud.position.set(0, 0, -3);
+    particleGroup.add(violetShellCloud);
     rig.add(particleGroup);
 
     // Parallax state + sources.
@@ -2956,11 +2958,11 @@
     camera.lookAt(0, 0, 0);
     state.camera = camera;
 
-    scene.add(new THREE.AmbientLight(0x2d5c2d, 1.5));
+    scene.add(new THREE.AmbientLight(0x20264a, 1.5));
     const key = new THREE.DirectionalLight(0xffffff, 1.7);
     key.position.set(3, 5, 4);
     scene.add(key);
-    const rim = new THREE.DirectionalLight(0x33ff66, 0.8);
+    const rim = new THREE.DirectionalLight(0x8b5cf6, 0.8);
     rim.position.set(-4, 2, -3);
     scene.add(rim);
 
@@ -2989,7 +2991,7 @@
     });
     bodyGeo.computeBoundingBox();
     const frontZ = (bodyGeo.boundingBox && bodyGeo.boundingBox.max) ? bodyGeo.boundingBox.max.z : (bodyD / 2 + bevel);
-    const body = new THREE.Mesh(bodyGeo, new THREE.MeshStandardMaterial({ color: 0x182418, metalness: 0.65, roughness: 0.4 }));
+    const body = new THREE.Mesh(bodyGeo, new THREE.MeshStandardMaterial({ color: 0x181b36, metalness: 0.65, roughness: 0.4 }));
     phone.add(body);
 
     // Live screen: a 2D canvas texture showing device name + battery %.
@@ -3006,7 +3008,7 @@
     // Dark bezel + glowing screen plane.
     const bezel = new THREE.Mesh(
       new THREE.PlaneGeometry(bodyW * 0.92, bodyH * 0.96),
-      new THREE.MeshBasicMaterial({ color: 0x050705 })
+      new THREE.MeshBasicMaterial({ color: 0x0a0a14 })
     );
     bezel.position.z = frontZ + 0.006;
     phone.add(bezel);
@@ -3113,28 +3115,28 @@
     const W = state.screenCanvas.width, H = state.screenCanvas.height;
     ctx.clearRect(0, 0, W, H);
     const grad = ctx.createLinearGradient(0, 0, 0, H);
-    grad.addColorStop(0, '#0a120a');
-    grad.addColorStop(1, '#050705');
+    grad.addColorStop(0, '#16214f');
+    grad.addColorStop(1, '#0a0a1c');
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, W, H);
-    ctx.fillStyle = '#142014';
+    ctx.fillStyle = '#252a5c';
     ctx.beginPath();
     ctx.arc(W / 2, 24, 22, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = '#33ff66';
+    ctx.fillStyle = '#5b8cff';
     ctx.font = '600 26px "IBM Plex Mono", system-ui, -apple-system, "Segoe UI", sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     let label = String(name || '—');
     if (label.length > 14) label = label.slice(0, 13) + '…';
     ctx.fillText(label, W / 2, 96);
-    ctx.fillStyle = '#d6f0d6';
+    ctx.fillStyle = '#eef1ff';
     ctx.font = '800 56px "IBM Plex Mono", system-ui, -apple-system, "Segoe UI", sans-serif';
     ctx.fillText(String(batt || '—'), W / 2, 190);
-    ctx.fillStyle = '#7fa283';
+    ctx.fillStyle = '#a7b0d6';
     ctx.font = '600 22px "IBM Plex Mono", system-ui, -apple-system, "Segoe UI", sans-serif';
     ctx.fillText('BATTERY', W / 2, 244);
-    ctx.fillStyle = '#455845';
+    ctx.fillStyle = '#5d6588';
     ctx.font = '26px "IBM Plex Mono", system-ui, sans-serif';
     ctx.fillText('📱', W / 2, 316);
     if (state.screenTex) state.screenTex.needsUpdate = true;
@@ -3199,6 +3201,8 @@
   // Tear-down for the document/element listeners registered by buildLiveAudioControls
   // for the current Live Camera/Screen/Audio view (set on open, cleared on close).
   let liveControlsCleanup = null;
+  // Tear-down for the holo-parallax rAF loop (set on open, cleared on close).
+  let liveHoloCleanup = null;
   // Start-lock so a double-tap on Start can't orphan a half-open WebRTC session.
   let liveBusy = false;
 
@@ -3240,6 +3244,10 @@
   // handler that keeps firing syncFs() against a detached control bar.
   function closeLiveView() {
     liveCleanup();
+    if (liveHoloCleanup) {
+      try { liveHoloCleanup(); } catch (err) { /* ignore */ }
+      liveHoloCleanup = null;
+    }
     if (liveControlsCleanup) {
       try { liveControlsCleanup(); } catch (err) { /* ignore */ }
       liveControlsCleanup = null;
@@ -3448,10 +3456,16 @@
     if (isVideo) {
       const stage = el('div', 'live__stage');
       const card = el('div', 'live__card');
+      // 3D holographic plane: cyan/violet glow bloom + emissive bezel + shimmer
+      // overlay stacked in the preserve-3d card around the <video>.
+      card.appendChild(el('div', 'live__holo-glow'));
+      card.appendChild(el('div', 'live__holo-frame'));
+      card.appendChild(el('div', 'live__holo-shimmer'));
       card.appendChild(video);
       stage.appendChild(card);
       mediaWrap.appendChild(stage);
-      enableLiveTilt(stage);
+      const holo = enableHoloParallax(stage, card);
+      if (holo && holo.stop) liveHoloCleanup = holo.stop;
       fullscreenEl = stage; // fullscreen targets the whole stage (video + controls)
       video._hud = buildLiveHud(stage);
     } else {
@@ -3652,35 +3666,65 @@
     return { bar, cleanup };
   }
 
-  // 3D tilt for the live stage: rotateX/rotateY follow the pointer inside the
-  // CSS `perspective`, resting flat again on leave. Disabled for reduced motion.
-  function enableLiveTilt(stage) {
-    if (prefersReducedMotion()) return;
-    const card = stage.querySelector('.live__card');
-    if (!card) return;
-
+  // 3D holographic parallax: the live video plane floats inside a preserve-3d
+  // card and eases (lerp via rAF) toward the cursor (±6° rotateX/rotateY + a
+  // subtle translateZ toward the viewer), reading as a Star-Wars-style floating
+  // hologram. Touch / no-hover falls back to a gentle auto-sway; reduced-motion
+  // returns null so the card keeps its static CSS tilt with no per-frame work.
+  function enableHoloParallax(stage, card) {
+    if (prefersReducedMotion()) return null;
+    const isTouch = !!(window.matchMedia && window.matchMedia('(hover: none)').matches);
+    const baseX = 5, baseY = -6;
+    let curX = baseX, curY = baseY, curZ = 0;
+    let tgtX = baseX, tgtY = baseY, tgtZ = 0;
     let raf = 0;
-    const set = (rx, ry) => {
-      if (raf) cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(() => {
-        card.style.transform = 'rotateX(' + rx + 'deg) rotateY(' + ry + 'deg)';
-      });
-    };
-    const reset = () => {
-      if (raf) cancelAnimationFrame(raf);
-      card.style.transform = '';
-    };
+    const isFs = () => !!(document.fullscreenElement || document.webkitFullscreenElement || document.msFullscreenElement);
 
-    stage.addEventListener('pointermove', (e) => {
-      const r = stage.getBoundingClientRect();
-      if (!r.width || !r.height) return;
-      const px = (e.clientX - r.left) / r.width;
-      const py = (e.clientY - r.top) / r.height;
-      const rx = ((0.5 - py) * 6).toFixed(2); // tilt up/down (±3deg)
-      const ry = ((px - 0.5) * 7).toFixed(2); // tilt left/right (±3.5deg)
-      set(rx, ry);
-    });
-    stage.addEventListener('pointerleave', reset);
+    function frame(now) {
+      raf = 0;
+      const t = now || performance.now();
+      if (isTouch) {
+        const s = t / 1000;
+        tgtX = baseX + Math.sin(s * 0.6) * 2.6;
+        tgtY = baseY + Math.cos(s * 0.4) * 3.2;
+        tgtZ = Math.sin(s * 0.8) * 6;
+      }
+      // Lerp toward target — transform-only, compositor-friendly, no layout.
+      curX += (tgtX - curX) * 0.09;
+      curY += (tgtY - curY) * 0.09;
+      curZ += (tgtZ - curZ) * 0.09;
+      if (isFs() === stage) {
+        card.style.transform = ''; // CSS `transform: none !important` flattens in fullscreen
+      } else {
+        card.style.transform =
+          'rotateX(' + curX.toFixed(2) + 'deg) rotateY(' + curY.toFixed(2) + 'deg) translateZ(' + curZ.toFixed(2) + 'px)';
+      }
+      raf = requestAnimationFrame(frame);
+    }
+
+    let onMove = null, onLeave = null;
+    if (!isTouch) {
+      onMove = (e) => {
+        const r = stage.getBoundingClientRect();
+        if (!r.width || !r.height) return;
+        const px = (e.clientX - r.left) / r.width - 0.5; // -0.5 … 0.5
+        const py = (e.clientY - r.top) / r.height - 0.5;
+        tgtX = -py * 12; // ±6°
+        tgtY = px * 12;  // ±6°
+        tgtZ = 14;       // float toward the viewer
+      };
+      onLeave = () => { tgtX = baseX; tgtY = baseY; tgtZ = 0; };
+      stage.addEventListener('pointermove', onMove);
+      stage.addEventListener('pointerleave', onLeave);
+    }
+    raf = requestAnimationFrame(frame);
+    return {
+      stop() {
+        if (raf) { cancelAnimationFrame(raf); raf = 0; }
+        if (onMove) stage.removeEventListener('pointermove', onMove);
+        if (onLeave) stage.removeEventListener('pointerleave', onLeave);
+      },
+    };
   }
 
   async function startLive(mode, video, status, startBtn, lens) {
@@ -4387,14 +4431,14 @@
   // The additional tiles (History / Gallery / Devices / Phone 3D / Live).
   const SPECIALS = [
     { id: 'history', emoji: '🕘', label: 'History', sub: 'Recent commands', color: '#8b5cf6', build: openHistory },
-    { id: 'gallery', emoji: '🖼️', label: 'Gallery', sub: 'Captured media', color: '#f2b13c', build: openGallery },
-    { id: 'devices', emoji: '📱', label: 'Devices', sub: 'All phones · status', color: '#3fb96a', build: openDevices },
-    { id: 'map', emoji: '📍', label: 'Map', sub: 'Live GPS history', color: '#3fb96a', build: openMap },
-    { id: 'tasks', emoji: '⏰', label: 'Tasks', sub: 'Scheduled commands', color: '#f2b13c', build: openTasks },
-    { id: 'phone3d', emoji: '🛰️', label: 'Phone 3D', sub: 'Live phone model', color: '#38b2ac', onClose: disposePhone3d, build: openPhone3d },
-    { id: 'liveaudio', emoji: '🎙️', label: 'Live Audio', sub: 'WebRTC mic streaming', color: '#38b2ac', onClose: closeLiveView, build: (s) => openLiveStream(s, 'audio') },
-    { id: 'livescreen', emoji: '🖥️', label: 'Live Screen', sub: 'WebRTC 30fps screen share', color: '#38bdf8', onClose: closeLiveView, build: (s) => openLiveStream(s, 'screen') },
-    { id: 'livecamera', emoji: '🎥', label: 'Live Camera', sub: 'WebRTC video + mic', color: '#ff6b6b', onClose: closeLiveView, build: (s) => openLiveStream(s, 'camera') },
+    { id: 'gallery', emoji: '🖼️', label: 'Gallery', sub: 'Captured media', color: '#ec4899', build: openGallery },
+    { id: 'devices', emoji: '📱', label: 'Devices', sub: 'All phones · status', color: '#38bdf8', build: openDevices },
+    { id: 'map', emoji: '📍', label: 'Map', sub: 'Live GPS history', color: '#d946ef', build: openMap },
+    { id: 'tasks', emoji: '⏰', label: 'Tasks', sub: 'Scheduled commands', color: '#f59e0b', build: openTasks },
+    { id: 'phone3d', emoji: '🛰️', label: 'Phone 3D', sub: 'Live phone model', color: '#22d3ee', onClose: disposePhone3d, build: openPhone3d },
+    { id: 'liveaudio', emoji: '🎙️', label: 'Live Audio', sub: 'WebRTC mic streaming', color: '#22d3ee', onClose: closeLiveView, build: (s) => openLiveStream(s, 'audio') },
+    { id: 'livescreen', emoji: '🖥️', label: 'Live Screen', sub: 'WebRTC 30fps screen share', color: '#10b981', onClose: closeLiveView, build: (s) => openLiveStream(s, 'screen') },
+    { id: 'livecamera', emoji: '🎥', label: 'Live Camera', sub: 'WebRTC video + mic', color: '#4ade80', onClose: closeLiveView, build: (s) => openLiveStream(s, 'camera') },
   ];
 
   // ---------------------------------------------------------------------------
@@ -4481,7 +4525,7 @@
       themeToggle.title = isLight ? 'Switch to dark theme' : 'Switch to light theme';
       themeToggle.setAttribute('aria-label', themeToggle.title);
     }
-    if (themeColorMeta) themeColorMeta.setAttribute('content', isLight ? '#0e1a0e' : '#050705');
+    if (themeColorMeta) themeColorMeta.setAttribute('content', isLight ? '#12142e' : '#0a0a14');
   }
 
   function initTheme() {
