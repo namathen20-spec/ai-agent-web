@@ -17,8 +17,8 @@
   --border-soft: #1a1c3a;
   --border-hover: #3a4bd4;
   --text: #eef1ff;
-  --text-dim: #a7b0d6;
-  --text-faint: #5d6588;
+  --text-dim: #c9d1ee;
+  --text-faint: #a3afd9;
   --accent: #5b8cff;
   --accent-2: #22d3ee;
   --accent-soft: #8b5cf6;
@@ -78,8 +78,8 @@
   --border-soft: #282c52;
   --border-hover: #5064e8;
   --text: #f2f4ff;
-  --text-dim: #b7c0e6;
-  --text-faint: #838cc0;
+  --text-dim: #d3d9f4;
+  --text-faint: #aeb8e2;
   --accent: #5b8cff;
   --accent-2: #22d3ee;
   --accent-soft: #8b5cf6;
@@ -145,8 +145,8 @@ html, body {
   overflow: hidden;
   pointer-events: none;
   background:
-    radial-gradient(1100px 640px at 12% -8%, rgba(91, 140, 255, 0.05), transparent 60%),
-    radial-gradient(900px 600px at 96% 112%, rgba(139, 92, 246, 0.06), transparent 58%),
+    radial-gradient(1100px 640px at 12% -8%, rgba(91, 140, 255, 0.028), transparent 60%),
+    radial-gradient(900px 600px at 96% 112%, rgba(139, 92, 246, 0.032), transparent 58%),
     linear-gradient(180deg, #0a0a14 0%, #0d0d1e 45%, #080812 100%);
 }
 :root[data-theme="light"] .bg-effects {
@@ -160,31 +160,31 @@ html, body {
   position: absolute;
   border-radius: 50%;
   filter: blur(70px);
-  opacity: 0.55;
+  opacity: 0.22;
   will-change: transform;
 }
 .orb--1 {
   width: 420px; height: 420px;
   top: -120px; left: -80px;
-  background: radial-gradient(circle, rgba(91, 140, 255, 0.22), transparent 70%);
-  animation: orbFloat 22s ease-in-out infinite;
+  background: radial-gradient(circle, rgba(91, 140, 255, 0.11), transparent 70%);
+  animation: orbFloat 70s ease-in-out infinite;
 }
 .orb--2 {
   width: 460px; height: 460px;
   bottom: -140px; right: -100px;
-  background: radial-gradient(circle, rgba(91, 140, 255, 0.16), transparent 70%);
-  animation: orbFloat 28s ease-in-out infinite reverse;
+  background: radial-gradient(circle, rgba(91, 140, 255, 0.08), transparent 70%);
+  animation: orbFloat 90s ease-in-out infinite reverse;
 }
 .orb--3 {
   width: 320px; height: 320px;
   top: 40%; left: 55%;
-  background: radial-gradient(circle, rgba(99, 102, 241, 0.12), transparent 70%);
-  animation: orbFloat 25s ease-in-out infinite;
+  background: radial-gradient(circle, rgba(99, 102, 241, 0.06), transparent 70%);
+  animation: orbFloat 80s ease-in-out infinite;
 }
 @keyframes orbFloat {
   0%, 100% { transform: translate(0, 0) scale(1); }
-  33%      { transform: translate(50px, 40px) scale(1.08); }
-  66%      { transform: translate(-40px, -30px) scale(0.94); }
+  33%      { transform: translate(16px, 12px) scale(1.02); }
+  66%      { transform: translate(-12px, -10px) scale(0.99); }
 }
 
 /* Real Three.js hero layer — a transparent WebGL canvas composited above the
@@ -195,6 +195,7 @@ html, body {
   inset: 0;
   z-index: 1;
   pointer-events: none;
+  opacity: 0.75; /* whisper layer — dim the Three.js scene so it never competes */
 }
 .hero-3d canvas {
   position: absolute;
@@ -211,11 +212,11 @@ html, body {
   inset: 0;
   z-index: 0;
   background:
-    radial-gradient(620px 460px at 50% 40%, rgba(91, 140, 255, 0.10), transparent 64%),
-    radial-gradient(900px 560px at 50% 112%, rgba(91, 140, 255, 0.05), transparent 60%);
+    radial-gradient(620px 460px at 50% 40%, rgba(91, 140, 255, 0.05), transparent 64%),
+    radial-gradient(900px 560px at 50% 112%, rgba(91, 140, 255, 0.025), transparent 60%);
   pointer-events: none;
 }
-:root[data-theme="light"] .bg-glow { opacity: 0.45; }
+:root[data-theme="light"] .bg-glow { opacity: 0.4; }
 
 /* =====================================================================
    Tactical HUD chrome — CRT scanlines + vignette + targeting grid
@@ -231,8 +232,8 @@ html, body {
 .hud-scanlines {
   background: repeating-linear-gradient(
     to bottom,
-    rgba(91, 140, 255, 0.04) 0,
-    rgba(91, 140, 255, 0.04) 1px,
+    rgba(91, 140, 255, 0.025) 0,
+    rgba(91, 140, 255, 0.025) 1px,
     rgba(0, 0, 0, 0) 1px,
     rgba(0, 0, 0, 0) 3px
   );
@@ -248,8 +249,8 @@ html, body {
   z-index: 0;
   pointer-events: none;
   background:
-    repeating-linear-gradient(to right, rgba(91, 140, 255, 0.035) 0 1px, transparent 1px 56px),
-    repeating-linear-gradient(to bottom, rgba(91, 140, 255, 0.035) 0 1px, transparent 1px 56px);
+    repeating-linear-gradient(to right, rgba(91, 140, 255, 0.02) 0 1px, transparent 1px 56px),
+    repeating-linear-gradient(to bottom, rgba(91, 140, 255, 0.02) 0 1px, transparent 1px 56px);
 }
 
 /* Uppercase instrument-labels + display accent for the big headings. */
@@ -402,15 +403,15 @@ html, body {
 
 .grid-view { animation: fadeSlideUp 0.4s var(--ease-out) both; }
 .grid-view__head { text-align: center; margin: 2px 0 18px; }
-.grid-view__title { margin: 0; font-size: 12px; font-weight: 600; letter-spacing: 0.18em; text-transform: uppercase; color: var(--text-dim); }
-.grid-view__hint { margin: 4px 0 0; font-size: 11px; letter-spacing: 0.06em; color: var(--text-faint); }
+.grid-view__title { margin: 0; font-size: 13px; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase; color: var(--text); }
+.grid-view__hint { margin: 4px 0 0; font-size: 12.5px; font-weight: 500; letter-spacing: 0.06em; color: var(--text-dim); }
 .grid-view__status {
   display: inline-flex;
   align-items: center;
   gap: 7px;
   margin-top: 10px;
   padding: 3px 10px;
-  font-size: 10.5px;
+  font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -452,7 +453,7 @@ html, body {
   border-radius: var(--radius);
   cursor: pointer;
   user-select: none;
-  background: var(--glass-bg);
+  background: var(--panel-2);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
   border: 1px solid var(--border);
@@ -513,9 +514,9 @@ html, body {
   top: 5px;
   left: 7px;
   z-index: 2;
-  font-size: 9.5px;
+  font-size: 11px;
   line-height: 1;
-  color: var(--text-faint);
+  color: var(--text-dim);
   letter-spacing: 0.08em;
   pointer-events: none;
 }
@@ -568,14 +569,16 @@ html, body {
   filter: grayscale(1) sepia(0.9) saturate(3.2) hue-rotate(-12deg);
 }
 .tile__label {
-  font-size: 12.5px;
-  font-weight: 600;
+  font-size: 13px;
+  font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+  color: var(--text);
   transform: translateZ(16px);
 }
 .tile__sub {
-  font-size: 10.5px;
+  font-size: 12px;
+  font-weight: 500;
   color: var(--text-dim);
   line-height: 1.25;
   max-width: 150px;
@@ -842,7 +845,7 @@ html, body {
   z-index: 3;
   pointer-events: none;
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 0.02em;
   opacity: 0;
   transition: opacity 0.35s ease;
@@ -861,7 +864,7 @@ html, body {
   background: rgba(91, 140, 255, 0.12);
   color: var(--accent);
   font-family: var(--font-sans);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.08em;
 }
@@ -1066,7 +1069,7 @@ html, body {
   background: rgba(10, 11, 24, 0.6);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
-  font-size: 11.5px;
+  font-size: 12px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--text-dim);
@@ -1087,7 +1090,7 @@ html, body {
   color: var(--accent);
   letter-spacing: 0.14em;
 }
-.cc-statusbar__item--right { margin-left: auto; color: var(--text-faint); }
+.cc-statusbar__item--right { margin-left: auto; color: var(--text-dim); }
 #statusDevice { font-family: var(--font-mono); }
 
 /* =====================================================================
@@ -1201,7 +1204,7 @@ html, body {
 
 .field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 13px; }
 .field:last-of-type { margin-bottom: 0; }
-.field__label { font-size: 12px; color: var(--text-dim); font-weight: 500; }
+.field__label { font-size: 12.5px; color: var(--text-dim); font-weight: 600; }
 
 input, select, textarea {
   background: var(--panel-2);
@@ -1228,10 +1231,10 @@ select {
   cursor: pointer;
 }
 
-.hint { font-size: 12px; color: var(--text-dim); margin: 6px 0 12px; line-height: 1.55; }
+.hint { font-size: 12.5px; font-weight: 500; color: var(--text-dim); margin: 6px 0 12px; line-height: 1.55; }
 .hint code {
   background: var(--panel-2); padding: 1px 6px; border-radius: 5px;
-  color: var(--accent-2); font-size: 11px;
+  color: var(--accent-2); font-size: 12px;
 }
 
 .btn {
@@ -1332,7 +1335,7 @@ select {
   font-weight: 700; font-size: 15px; letter-spacing: -0.01em;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.chat__status { font-size: 11.5px; color: var(--text-dim); }
+.chat__status { font-size: 12px; color: var(--text-dim); }
 
 .messages {
   flex: 1;
@@ -1371,7 +1374,7 @@ select {
 }
 .msg--user .msg__bubble { background: var(--user-bubble); border-bottom-right-radius: 6px; border-top-right-radius: 6px; }
 .msg--assistant .msg__bubble { background: var(--assistant-bubble); border: 1px solid var(--border-soft); border-bottom-left-radius: 6px; border-top-left-radius: 6px; }
-.msg__meta { font-size: 11px; color: var(--text-faint); margin-top: 5px; padding: 0 4px; display: flex; align-items: center; gap: 8px; }
+.msg__meta { font-size: 12px; font-weight: 500; color: var(--text-dim); margin-top: 5px; padding: 0 4px; display: flex; align-items: center; gap: 8px; }
 .msg__meta-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .msg__bubble a, .msg__link { color: var(--accent-2); text-decoration: underline; text-underline-offset: 2px; word-break: break-all; transition: color 0.16s ease; }
 .msg__bubble a:hover, .msg__link:hover { color: var(--text); }
@@ -1409,7 +1412,7 @@ select {
 
 .msg__tools { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; align-items: center; }
 .msg__tools-icon { font-size: 12px; line-height: 20px; color: var(--text-dim); }
-.msg__tool { font-size: 11px; line-height: 20px; padding: 0 8px; border-radius: 999px; background: var(--chip-bg); color: var(--chip-fg); border: 1px solid var(--chip-border); animation: toolIn 0.4s var(--ease-out) both; }
+.msg__tool { font-size: 12px; line-height: 20px; padding: 0 8px; border-radius: 999px; background: var(--chip-bg); color: var(--chip-fg); border: 1px solid var(--chip-border); animation: toolIn 0.4s var(--ease-out) both; }
 @keyframes toolIn { from { opacity: 0; transform: translateY(5px) scale(0.92); } to { opacity: 1; transform: none; } }
 
 .msg__media { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; max-width: 420px; }
@@ -1463,7 +1466,7 @@ select {
 .prov-row:hover { background: var(--panel-2-hover); border-color: var(--border-hover); transform: translateY(-1px); }
 .prov-row__info { display: flex; flex-direction: column; min-width: 0; }
 .prov-row__name { font-weight: 600; font-size: 13px; }
-.prov-row__model { font-size: 11px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.prov-row__model { font-size: 12px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .prov-row__btns { display: flex; gap: 5px; flex-shrink: 0; }
 .prov-row__btns .icon-btn { width: 30px; height: 30px; }
 .icon-btn--danger:hover { color: var(--danger); border-color: rgba(255, 107, 107, 0.6); background: rgba(255, 107, 107, 0.08); }
@@ -1472,7 +1475,7 @@ select {
 .mcp-tools li { display: flex; flex-direction: column; gap: 2px; padding: 8px 11px; background: var(--panel-2); border: 1px solid transparent; border-radius: var(--radius-xs); font-size: 12px; transition: background 0.16s ease, border-color 0.16s ease, transform 0.12s ease; }
 .mcp-tools li:hover { background: var(--panel-2-hover); border-color: var(--border-soft); transform: translateY(-1px); }
 .mcp-tool__cat { font-weight: 600; }
-.mcp-tool__names { color: var(--text-dim); font-size: 11px; word-break: break-word; }
+.mcp-tool__names { color: var(--text-dim); font-size: 12px; word-break: break-word; }
 
 /* =====================================================================
    Feature views — History / Gallery / Devices / Phone 3D (#2, #5, #8, #9)
@@ -1480,7 +1483,7 @@ select {
 
 /* ---- Command history (#8) ---- */
 .history { display: flex; flex-direction: column; gap: 12px; }
-.history__count { font-size: 12px; color: var(--text-faint); }
+.history__count { font-size: 12.5px; color: var(--text-dim); }
 .history__list { display: flex; flex-direction: column; gap: 10px; }
 .history__row {
   display: flex; flex-direction: column; gap: 6px;
@@ -1493,9 +1496,9 @@ select {
 }
 .history__row:hover { background: var(--panel-2-hover); border-color: var(--border-hover); transform: translateY(-1px); }
 .history__top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-.history__time { font-size: 11px; color: var(--text-faint); font-variant-numeric: tabular-nums; }
+.history__time { font-size: 12px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
 .history__tool {
-  font-size: 11px; font-weight: 700; color: var(--accent-2);
+  font-size: 12px; font-weight: 700; color: var(--accent-2);
   background: var(--chip-bg); border: 1px solid var(--chip-border);
   padding: 1px 8px; border-radius: 999px;
 }
@@ -1783,7 +1786,7 @@ select {
   color: var(--text);
   font-variant-numeric: tabular-nums;
 }
-.map-view__ts { color: var(--text-faint); font-size: 11.5px; }
+.map-view__ts { color: var(--text-dim); font-size: 12px; }
 
 /* =====================================================================
    Automation scheduler view  (#13 ⏰ Tasks)
@@ -1817,7 +1820,7 @@ select {
   font-size: 13px; color: var(--text); word-break: break-word;
 }
 .tasks__del { padding: 7px 12px; font-size: 12.5px; }
-.tasks__meta { font-size: 11.5px; color: var(--text-faint); }
+.tasks__meta { font-size: 12px; color: var(--text-dim); }
 
 /* =====================================================================
    Multi-device admin grid polish  (#5)
@@ -1886,7 +1889,7 @@ select {
 }
 .fm__row:hover { background: var(--panel-2-hover); border-color: var(--border-hover); transform: translateY(-1px); }
 .fm__name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.fm__size { color: var(--text-faint); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.fm__size { color: var(--text-dim); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .fm__error {
   color: #ff8f8f;
   padding: 12px 14px;
@@ -1976,7 +1979,7 @@ select {
   position: absolute;
   left: 0; right: 0; bottom: 0;
   padding: 6px 10px;
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--text-dim);
   background: linear-gradient(to top, rgba(0, 0, 0, 0.72), rgba(0, 0, 0, 0));
   text-align: center;
@@ -2025,9 +2028,9 @@ select {
   background: linear-gradient(135deg, rgba(236, 72, 153, 0.42), rgba(34, 211, 238, 0.4));
   opacity: 0;
   pointer-events: none;
-  animation: logoHue 6s ease-in-out infinite;
+  animation: logoHue 18s ease-in-out infinite;
 }
-@keyframes logoHue { 0%, 100% { opacity: 0; } 50% { opacity: 1; } }
+@keyframes logoHue { 0%, 100% { opacity: 0; } 50% { opacity: 0.35; } }
 
 /* ---- primary / CTA buttons: blue→violet→pink gradient + glow + sheen ---- */
 .btn--primary,
@@ -2090,20 +2093,20 @@ select {
 .tile::before { color: var(--tile-hue, var(--accent)); }
 .tile__icon { color: var(--tile-hue, var(--text-dim)); }
 .tile:hover {
-  border-color: color-mix(in srgb, var(--tile-hue, var(--accent)) 78%, transparent);
+  border-color: color-mix(in srgb, var(--tile-hue, var(--accent)) 60%, transparent);
   background:
-    radial-gradient(120% 90% at 50% -12%, color-mix(in srgb, var(--tile-hue, var(--accent)) 24%, transparent), transparent 58%),
+    radial-gradient(120% 90% at 50% -12%, color-mix(in srgb, var(--tile-hue, var(--accent)) 10%, transparent), transparent 58%),
     var(--glass-bg-strong);
   box-shadow:
     var(--glass-inner),
     inset 3px 0 0 0 var(--tile-hue, var(--accent)),
-    0 0 0 1px color-mix(in srgb, var(--tile-hue, var(--accent)) 46%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--tile-hue, var(--accent)) 34%, transparent),
     0 14px 34px rgba(0, 0, 0, 0.45),
-    0 6px 26px color-mix(in srgb, var(--tile-hue, var(--accent)) 38%, transparent);
+    0 6px 22px color-mix(in srgb, var(--tile-hue, var(--accent)) 16%, transparent);
 }
 .tile:hover .tile__icon {
   color: var(--tile-hue, var(--accent));
-  filter: drop-shadow(0 0 8px color-mix(in srgb, var(--tile-hue, var(--accent)) 65%, transparent));
+  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--tile-hue, var(--accent)) 45%, transparent));
 }
 
 /* =====================================================================

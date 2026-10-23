@@ -2314,14 +2314,14 @@
     scene.add(rig);
 
     // Lights: ambient fill + white key + violet rim + cyan accent point.
-    scene.add(new THREE.AmbientLight(0x20264a, 1.4));
-    const key = new THREE.DirectionalLight(0xffffff, 1.3);
+    scene.add(new THREE.AmbientLight(0x20264a, 1.1));
+    const key = new THREE.DirectionalLight(0xffffff, 1.0);
     key.position.set(4, 5, 6);
     scene.add(key);
-    const rim = new THREE.DirectionalLight(0x8b5cf6, 0.7);
+    const rim = new THREE.DirectionalLight(0x8b5cf6, 0.5);
     rim.position.set(-4, -2, -3);
     scene.add(rim);
-    const accentLight = new THREE.PointLight(0x22d3ee, 30, 0, 2);
+    const accentLight = new THREE.PointLight(0x22d3ee, 8, 0, 2);
     accentLight.position.set(-2.5, 1.2, 2.5);
     scene.add(accentLight);
 
@@ -2342,26 +2342,26 @@
       return g;
     }
 
-    // Central globe: emissive solid core + dotted points + faint wireframe cage.
+    // Central globe: muted emissive solid core + dotted points + faint wireframe cage.
     const globe = new THREE.Group();
     globe.add(new THREE.Mesh(
       new THREE.SphereGeometry(1.42, 32, 24),
       new THREE.MeshStandardMaterial({
-        color: 0x0a0a1f, emissive: 0x5b8cff, emissiveIntensity: 0.5,
+        color: 0x0a0a1f, emissive: 0x4660b8, emissiveIntensity: 0.16,
         roughness: 0.55, metalness: 0.15,
       })
     ));
     globe.add(new THREE.Points(
-      sphereCloud(1.6, 360),
+      sphereCloud(1.6, 220),
       new THREE.PointsMaterial({
-        color: 0x5b8cff, size: 0.035, sizeAttenuation: true, transparent: true,
-        opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false,
+        color: 0x5b7fc4, size: 0.03, sizeAttenuation: true, transparent: true,
+        opacity: 0.45, blending: THREE.AdditiveBlending, depthWrite: false,
       })
     ));
     globe.add(new THREE.Mesh(
       new THREE.IcosahedronGeometry(1.62, 1),
       new THREE.MeshBasicMaterial({
-        color: 0x8b5cf6, wireframe: true, transparent: true, opacity: 0.2, depthWrite: false,
+        color: 0x7a6bb8, wireframe: true, transparent: true, opacity: 0.12, depthWrite: false,
       })
     ));
     globe.position.set(0, 0.2, -1);
@@ -2381,7 +2381,7 @@
       const warm = i % 2 === 0;
       const mat = new THREE.MeshStandardMaterial({
         color: warm ? 0x141a38 : 0x12243a,
-        emissive: warm ? 0x22d3ee : 0x8b5cf6, emissiveIntensity: warm ? 0.5 : 0.28,
+        emissive: warm ? 0x28606e : 0x6a5aa0, emissiveIntensity: warm ? 0.16 : 0.1,
         roughness: 0.42, metalness: 0.5, flatShading: true,
       });
       const m = new THREE.Mesh(geo, mat);
@@ -2391,7 +2391,7 @@
         -1.8 - (i % 5) * 1.1
       );
       m.userData = {
-        rot: 0.004 + Math.random() * 0.006,
+        rot: 0.0015 + Math.random() * 0.002,
         axisX: 0.3 + Math.random() * 0.7,
         axisY: 0.3 + Math.random() * 0.7,
         drift: 0.5 + Math.random() * 1.3,
@@ -2402,23 +2402,23 @@
       floaters.push(m);
     });
 
-    // Interactive particle field — blue slate cloud + violet shell cloud.
+    // Interactive particle field — muted blue slate cloud + violet shell cloud.
     const particleGroup = new THREE.Group();
     const coolGeo = new THREE.BufferGeometry();
-    const coolPos = new Float32Array(220 * 3);
-    for (let i = 0; i < 220; i++) {
+    const coolPos = new Float32Array(110 * 3);
+    for (let i = 0; i < 110; i++) {
       coolPos[i * 3] = (Math.random() - 0.5) * 18;
       coolPos[i * 3 + 1] = (Math.random() - 0.5) * 12;
       coolPos[i * 3 + 2] = (Math.random() - 0.5) * 9;
     }
     coolGeo.setAttribute('position', new THREE.BufferAttribute(coolPos, 3));
     particleGroup.add(new THREE.Points(coolGeo, new THREE.PointsMaterial({
-      color: 0x4c5bd4, size: 0.04, sizeAttenuation: true, transparent: true,
-      opacity: 0.45, blending: THREE.AdditiveBlending, depthWrite: false,
+      color: 0x4a5590, size: 0.032, sizeAttenuation: true, transparent: true,
+      opacity: 0.25, blending: THREE.AdditiveBlending, depthWrite: false,
     })));
-    const violetShellCloud = new THREE.Points(sphereCloud(7, 130), new THREE.PointsMaterial({
-      color: 0x8b5cf6, size: 0.05, sizeAttenuation: true, transparent: true,
-      opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false,
+    const violetShellCloud = new THREE.Points(sphereCloud(7, 80), new THREE.PointsMaterial({
+      color: 0x6a5aa0, size: 0.04, sizeAttenuation: true, transparent: true,
+      opacity: 0.3, blending: THREE.AdditiveBlending, depthWrite: false,
     }));
     violetShellCloud.position.set(0, 0, -3);
     particleGroup.add(violetShellCloud);
@@ -2477,22 +2477,22 @@
       rig.rotation.x += (-cur.y * 0.22 - rig.rotation.x) * 0.04;
       rig.position.y = cur.scroll * 0.9;
 
-      // Globe: slow spin + gentle breath.
-      globe.rotation.y += dt * 0.12;
-      globe.rotation.x += dt * 0.03;
-      globe.scale.setScalar(1 + Math.sin(travel * 0.6) * 0.015);
+      // Globe: barely-perceptible spin + gentle breath (a whisper, not a marquee).
+      globe.rotation.y += dt * 0.02;
+      globe.rotation.x += dt * 0.006;
+      globe.scale.setScalar(1 + Math.sin(travel * 0.6) * 0.004);
 
-      // Floaters: independent spin + vertical drift.
+      // Floaters: slow independent spin + subtle vertical drift.
       for (let i = 0; i < floaters.length; i++) {
         const m = floaters[i];
         const u = m.userData;
-        m.rotation.x += u.rot * u.axisX * dt * 60;
-        m.rotation.y += u.rot * u.axisY * dt * 60;
-        m.position.y = u.base.y + Math.sin(travel * u.drift + u.phase) * 0.6;
+        m.rotation.x += u.rot * u.axisX * dt * 30;
+        m.rotation.y += u.rot * u.axisY * dt * 30;
+        m.position.y = u.base.y + Math.sin(travel * u.drift + u.phase) * 0.28;
       }
 
       // Particles: slow rotation + mouse-responsive shift.
-      particleGroup.rotation.y += dt * 0.02;
+      particleGroup.rotation.y += dt * 0.008;
       particleGroup.rotation.x = cur.y * 0.15;
       particleGroup.position.x = cur.x * 0.4;
       particleGroup.position.y = -cur.y * 0.25;
@@ -3133,10 +3133,10 @@
     ctx.fillStyle = '#eef1ff';
     ctx.font = '800 56px "IBM Plex Mono", system-ui, -apple-system, "Segoe UI", sans-serif';
     ctx.fillText(String(batt || '—'), W / 2, 190);
-    ctx.fillStyle = '#a7b0d6';
+    ctx.fillStyle = '#c9d1ee';
     ctx.font = '600 22px "IBM Plex Mono", system-ui, -apple-system, "Segoe UI", sans-serif';
     ctx.fillText('BATTERY', W / 2, 244);
-    ctx.fillStyle = '#5d6588';
+    ctx.fillStyle = '#a3afd9';
     ctx.font = '26px "IBM Plex Mono", system-ui, sans-serif';
     ctx.fillText('📱', W / 2, 316);
     if (state.screenTex) state.screenTex.needsUpdate = true;
