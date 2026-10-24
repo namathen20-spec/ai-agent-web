@@ -239,6 +239,12 @@
           renderFileContent(listEl, fullPath, name, raw, () => nav(fmParent(fullPath)));
         }
 
+        // Revoke the file-preview Blob URL when the Files tile closes (openTool →
+        // specialOnClose → closeTool) so no object URL outlives the view.
+        scope.onClose = () => {
+          if (listEl._fmUrl) { try { URL.revokeObjectURL(listEl._fmUrl); } catch (err) { /* ignore */ } listEl._fmUrl = null; }
+        };
+
         nav('/sdcard/');
       },
     },
@@ -678,6 +684,7 @@
   let messages = loadMessages();
 
   function renderMessages() {
+    if (activeTypeTimer) { clearInterval(activeTypeTimer); activeTypeTimer = null; }
     messagesEl.innerHTML = '';
     messages.forEach((m) => messagesEl.appendChild(renderMessage(m)));
     messagesEl.scrollTop = messagesEl.scrollHeight;
@@ -857,8 +864,11 @@
   function renderImageViaBlob(img, url) {
     url = safeMediaUrl(url);
     if (!url) return;
-    fetch(url)
+    const controller = new AbortController();
+    const timer = setTimeout(() => { try { controller.abort(); } catch (err) { /* ignore */ } }, 12000);
+    fetch(url, { signal: controller.signal })
       .then((resp) => {
+        clearTimeout(timer);
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
         return resp.arrayBuffer();
       })
@@ -880,7 +890,8 @@
         img.src = next;
       })
       .catch(() => {
-        // Fall back to the direct URL (e.g. if the fetch is blocked).
+        clearTimeout(timer);
+        // Fall back to the direct URL (e.g. if the fetch is blocked or stalled).
         img.src = url;
       });
   }
@@ -929,6 +940,9 @@
   const TYPEWRITER_TICK = 32;  // ~30fps reveal
   const TYPEWRITER_CHARS = 10; // ~300 chars/s — ~10x fewer innerHTML rebuilds
   const TYPING_CARET = '<span class="typing-caret" aria-hidden="true">▍</span>';
+  // Active typewriter interval (so renderMessages/clearChat can cancel a
+  // re-render that would otherwise keep mutating a detached bubble node).
+  let activeTypeTimer = null;
 
   function prefersReducedMotion() {
     return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
@@ -939,6 +953,7 @@
     if (!state || state.done) return;
     state.done = true;
     if (state.timer) clearInterval(state.timer);
+    if (activeTypeTimer === state.timer) activeTypeTimer = null;
     bubble.innerHTML = linkify(state.full);
     bubble.classList.remove('msg__bubble--typing');
     messagesEl.scrollTop = messagesEl.scrollHeight;
@@ -964,6 +979,7 @@
       bubble.innerHTML = linkify(full.slice(0, i)) + TYPING_CARET;
       messagesEl.scrollTop = messagesEl.scrollHeight;
     }, TYPEWRITER_TICK);
+    activeTypeTimer = state.timer;
   }
 
   // Clicking a still-typing bubble reveals the full text immediately.
@@ -2002,6 +2018,9 @@
   // Render a directory listing into `container`. `raw` is the listdir JSON string
   // (or a phone error string). `nav`/`openFile` are the callbacks from the tile.
   function renderFileDir(container, path, raw, nav, openFile) {
+    // Revoke any object URL left by a previous file preview in this container
+    // so opening a file and then navigating back/away never leaks a Blob URL.
+    if (container._fmUrl) { try { URL.revokeObjectURL(container._fmUrl); } catch (err) { /* ignore */ } container._fmUrl = null; }
     container.innerHTML = '';
     container.classList.add('fm');
 
@@ -2438,7 +2457,7 @@
 
   // ---------------------------------------------------------------------------
   // AURA central holographic phone — a pure CSS/HTML phone rendered inside
-  // #gridCenter (replaces the old fixed #central3d Three.js scene). The lock
+  // #gridCenter (replaces the old fixed Three.js central scene). The lock
   // screen clock/date are the REAL client time (1s tick); the agent-status pill
   // reflects the REAL connection state from devicesCache (online/offline/
   // connecting); the dock + "PHONE 3D" button call the exact same openTool/
@@ -2507,6 +2526,12 @@
     // Particles + mouse parallax only on fine pointers; always off for touch /
     // reduced-motion. The phone itself always renders.
     const animate = fine && !touch && !reduced;
+
+    // Cheap gate for every loop/timer below: when the page is backgrounded or a
+    // tool is open (grid hidden), skip all work so the phone never burns GPU/CPU
+    // off-screen. rAF is also browser-throttled when hidden, but this avoids any
+    // wasted draw while a tool view covers the grid.
+    const isIdle = () => document.hidden || (gridView.isConnected && gridView.hidden);
 
     const root = el('div', 'holo-phone');
 
@@ -2636,6 +2661,7 @@
       let raf = 0;
       const render = () => {
         raf = requestAnimationFrame(render);
+        if (isIdle()) return;
         ctx.clearRect(0, 0, 320, 80);
         for (let i = 0; i < particles.length; i++) {
           const p = particles[i];
@@ -2660,6 +2686,7 @@
       let tgtX = 0, tgtY = 0, curX = 0, curY = 0;
       const apply = () => {
         raf = requestAnimationFrame(apply);
+        if (isIdle()) return;
         curX += (tgtX - curX) * 0.1;
         curY += (tgtY - curY) * 0.1;
         tilt.style.transform = 'rotateY(' + curX.toFixed(2) + 'deg) rotateX(' + curY.toFixed(2) + 'deg)';
@@ -2681,8 +2708,8 @@
       };
     }
 
-    const clockTimer = setInterval(updatePhoneClock, 1000);
-    const statusTimer = setInterval(updatePhoneStatus, 8000);
+    const clockTimer = setInterval(() => { if (!isIdle()) updatePhoneClock(); }, 1000);
+    const statusTimer = setInterval(() => { if (!isIdle()) updatePhoneStatus(); }, 8000);
 
     holoPhone = {
       clock, time, date, pill, pillDot, pillText, flash, hint,
@@ -2699,6 +2726,21 @@
     updatePhoneStatus();
     return holoPhone;
   }
+
+  // Page-level teardown for the CSS phone: stop its rAF loops + timers whenever
+  // the tab is backgrounded (or unloaded) so it never runs off-screen. On return
+  // to the foreground the phone is rebuilt fresh (the gating above already stops
+  // all work while a tool is open, so we only tear down for real page lifetime).
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') {
+      if (holoPhone && holoPhone.cleanup) holoPhone.cleanup();
+    } else if (!holoPhone) {
+      buildHolographicPhone();
+    }
+  });
+  window.addEventListener('beforeunload', () => {
+    if (holoPhone && holoPhone.cleanup) holoPhone.cleanup();
+  });
 
   // ---------------------------------------------------------------------------
   // Real Three.js hero — an immersive background (globe + low-poly floaters +
@@ -2987,11 +3029,10 @@
   }
 
   // ---------------------------------------------------------------------------
-  // Central holographic phone — a SEPARATE Three.js scene from the "Phone 3D"
-  // tile. Floats a larger metallic phone above a circular platform, wrapped in
-  // layered holographic rings, behind the whole UI. The on-screen readout is
-  // real connection state (online / offline / connecting) driven by the live
-  // device cache, never a fake preview.
+  // Shared connection-state + phone-screen helpers. `centralConnectionLabel`
+  // derives the real online/offline/connecting state from devicesCache (driven
+  // by live device data, never a fake preview); `drawPhoneScreen` renders the
+  // decorative purple→blue galaxy wallpaper used by the Phone 3D tile.
   // ---------------------------------------------------------------------------
   function centralConnectionLabel() {
     const online = devicesCache.filter((d) => d.online);
@@ -3085,221 +3126,6 @@
       x += iw + gap;
     }
     ctx.restore();
-  }
-
-  function drawCentralScreen(state, tag, sub, color) {
-    const ctx = state.screenCtx;
-    if (!ctx) return;
-    const W = state.screenCanvas.width, H = state.screenCanvas.height;
-    ctx.clearRect(0, 0, W, H);
-    const caption = String(tag || '') + (sub ? ' · ' + String(sub) : '');
-    drawPhoneScreen(ctx, W, H, { caption: caption, captionColor: color || '#3b82f6' });
-    if (state.screenTex) state.screenTex.needsUpdate = true;
-  }
-
-  function initCentralPhone() {
-    if (prefersReducedMotion()) return;
-    if (!(window.matchMedia && window.matchMedia('(pointer: fine)').matches)) return;
-    if (window.matchMedia && window.matchMedia('(max-width: 760px)').matches) return;
-    const host = document.getElementById('central3d');
-    if (!host) return;
-    let webgl = false;
-    try {
-      const t = document.createElement('canvas');
-      webgl = !!(window.WebGLRenderingContext && (t.getContext('webgl') || t.getContext('experimental-webgl')));
-    } catch (err) { webgl = false; }
-    if (!webgl) return;
-    loadThree().then((THREE) => {
-      try { initCentralScene(THREE, host); }
-      catch (err) { /* decorative only */ }
-    }).catch(() => { /* keep CSS-only fallback */ });
-  }
-
-  function initCentralScene(THREE, host) {
-    const w = window.innerWidth;
-    const h = window.innerHeight;
-
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-    renderer.setSize(w, h, false);
-    renderer.setClearColor(0x000000, 0);
-    const canvas = renderer.domElement;
-    canvas.setAttribute('aria-hidden', 'true');
-    host.appendChild(canvas);
-
-    const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(38, w / h, 0.1, 100);
-    camera.position.set(0, 1.3, 8.6);
-    camera.lookAt(0, 0.3, 0);
-
-    // Parent rig for mouse parallax.
-    const rig = new THREE.Group();
-    scene.add(rig);
-
-    scene.add(new THREE.AmbientLight(0x1e293b, 1.6));
-    const key = new THREE.DirectionalLight(0xffffff, 1.6);
-    key.position.set(3, 5, 5);
-    scene.add(key);
-    const rim = new THREE.DirectionalLight(0xa855f7, 0.9);
-    rim.position.set(-4, 2, -2);
-    scene.add(rim);
-    const cyan = new THREE.PointLight(0x06b6d4, 12, 0, 2);
-    cyan.position.set(0, 1.6, 2.4);
-    scene.add(cyan);
-
-    // ---- floating platform (metallic disc) ----
-    const platform = new THREE.Mesh(
-      new THREE.CylinderGeometry(1.25, 1.5, 0.07, 64),
-      new THREE.MeshStandardMaterial({ color: 0x020617, metalness: 0.85, roughness: 0.3, emissive: 0x0f172a, emissiveIntensity: 0.3 })
-    );
-    platform.position.set(0, -2.55, 0);
-    rig.add(platform);
-    const plnGlow = new THREE.Mesh(
-      new THREE.CylinderGeometry(1.28, 1.53, 0.02, 64),
-      new THREE.MeshBasicMaterial({ color: 0x06b6d4, transparent: true, opacity: 0.16, blending: THREE.AdditiveBlending, depthWrite: false })
-    );
-    plnGlow.position.set(0, -2.5, 0);
-    rig.add(plnGlow);
-
-    // ---- the phone ----
-    const phone = new THREE.Group();
-    const bodyW = 1.9, bodyH = 3.9, bodyR = 0.26, bodyD = 0.2, bevel = 0.04;
-    const shape = new THREE.Shape();
-    {
-      const x = -bodyW / 2, y = -bodyH / 2, w2 = bodyW, h2 = bodyH, r = bodyR;
-      shape.moveTo(x + r, y);
-      shape.lineTo(x + w2 - r, y);
-      shape.quadraticCurveTo(x + w2, y, x + w2, y + r);
-      shape.lineTo(x + w2, y + h2 - r);
-      shape.quadraticCurveTo(x + w2, y + h2, x + w2 - r, y + h2);
-      shape.lineTo(x + r, y + h2);
-      shape.quadraticCurveTo(x, y + h2, x, y + h2 - r);
-      shape.lineTo(x, y + r);
-      shape.quadraticCurveTo(x, y, x + r, y);
-    }
-    const bodyGeo = new THREE.ExtrudeGeometry(shape, {
-      depth: bodyD, bevelEnabled: true, bevelThickness: bevel, bevelSize: bevel, bevelSegments: 3, curveSegments: 14,
-    });
-    bodyGeo.computeBoundingBox();
-    const frontZ = (bodyGeo.boundingBox && bodyGeo.boundingBox.max) ? bodyGeo.boundingBox.max.z : (bodyD / 2 + bevel);
-    const body = new THREE.Mesh(bodyGeo, new THREE.MeshStandardMaterial({
-      color: 0x020617, metalness: 0.78, roughness: 0.32, emissive: 0x0f172a, emissiveIntensity: 0.4,
-    }));
-    phone.add(body);
-
-    // cyan/violet emissive side edges (thin additive bars)
-    const edgeMatC = new THREE.MeshBasicMaterial({ color: 0x06b6d4, transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false });
-    const edgeMatV = new THREE.MeshBasicMaterial({ color: 0xa855f7, transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false });
-    const eL = new THREE.Mesh(new THREE.BoxGeometry(0.02, bodyH * 0.96, bodyD + bevel), edgeMatC);
-    eL.position.set(-bodyW / 2 + 0.03, 0, frontZ);
-    phone.add(eL);
-    const eR = new THREE.Mesh(new THREE.BoxGeometry(0.02, bodyH * 0.96, bodyD + bevel), edgeMatV);
-    eR.position.set(bodyW / 2 - 0.03, 0, frontZ);
-    phone.add(eR);
-
-    // screen
-    const screenCanvas = document.createElement('canvas');
-    screenCanvas.width = 256;
-    screenCanvas.height = 512;
-    const screenCtx = screenCanvas.getContext('2d');
-    const screenTex = new THREE.CanvasTexture(screenCanvas);
-    screenTex.minFilter = THREE.LinearFilter;
-    screenTex.magFilter = THREE.LinearFilter;
-
-    const bezel = new THREE.Mesh(new THREE.PlaneGeometry(bodyW * 0.92, bodyH * 0.96), new THREE.MeshBasicMaterial({ color: 0x030712 }));
-    bezel.position.z = frontZ + 0.006;
-    phone.add(bezel);
-    const screenPlane = new THREE.Mesh(new THREE.PlaneGeometry(bodyW * 0.84, bodyH * 0.88), new THREE.MeshBasicMaterial({ map: screenTex }));
-    screenPlane.position.z = frontZ + 0.012;
-    phone.add(screenPlane);
-
-    phone.position.set(0, 0.5, 0);
-    rig.add(phone);
-
-    // ---- holographic rings (layered radii / tilts / speeds) ----
-    const rings = [];
-    const ringDefs = [
-      { r: 2.35, t: 0.014, color: 0x06b6d4, tiltX: 1.32, tiltZ: 0.18, speed: 0.22 },
-      { r: 2.05, t: 0.02, color: 0x3b82f6, tiltX: 0.52, tiltZ: 0.3, speed: -0.16 },
-      { r: 2.62, t: 0.01, color: 0xa855f7, tiltX: 0.86, tiltZ: -0.22, speed: 0.28 },
-      { r: 1.72, t: 0.016, color: 0xec4899, tiltX: 1.08, tiltZ: 0.5, speed: -0.24 },
-    ];
-    ringDefs.forEach((d) => {
-      const mesh = new THREE.Mesh(
-        new THREE.TorusGeometry(d.r, d.t, 8, 96),
-        new THREE.MeshBasicMaterial({ color: d.color, transparent: true, opacity: 0.38, blending: THREE.AdditiveBlending, depthWrite: false })
-      );
-      mesh.rotation.set(d.tiltX, 0, d.tiltZ);
-      mesh.userData.speed = d.speed;
-      mesh.userData.baseTiltX = d.tiltX;
-      mesh.userData.baseTiltZ = d.tiltZ;
-      rig.add(mesh);
-      rings.push(mesh);
-    });
-
-    const state = { screenCanvas, screenCtx, screenTex };
-
-    function drawConnection() {
-      const s = centralConnectionLabel();
-      drawCentralScreen(state, s.tag, s.sub, s.color);
-    }
-    drawConnection();
-    // Refresh the real connection readout; also nudge a device fetch if the cache
-    // is still empty so we don't sit on "CONNECTING" forever.
-    const refreshConnection = async () => {
-      if (!devicesCache.length) {
-        try { const devs = await fetchDevices(); populateDeviceSelect(devs); } catch (err) { /* ignore */ }
-      }
-      drawConnection();
-    };
-    refreshConnection();
-    const connTimer = setInterval(refreshConnection, 8000);
-    // Keep the on-screen clock live (decorative wallpaper + real time) second by
-    // second — drawConnection() only reads the cached label, no relay round-trip.
-    const clockTimer = setInterval(drawConnection, 1000);
-
-    // ---- parallax + float + spin ----
-    const target = { x: 0, y: 0 };
-    window.addEventListener('pointermove', (e) => {
-      target.x = (e.clientX / window.innerWidth) * 2 - 1;
-      target.y = (e.clientY / window.innerHeight) * 2 - 1;
-    }, { passive: true });
-
-    function onResize() {
-      const rw = window.innerWidth;
-      const rh = window.innerHeight;
-      renderer.setSize(rw, rh, false);
-      camera.aspect = rw / rh;
-      camera.updateProjectionMatrix();
-    }
-    window.addEventListener('resize', onResize, { passive: true });
-
-    let last = performance.now();
-    function animate(now) {
-      requestAnimationFrame(animate);
-      const t = now || performance.now();
-      const dt = Math.min(0.05, (t - last) / 1000) || 0.016;
-      last = t;
-      const travel = t * 0.001;
-
-      rig.rotation.y += (target.x * 0.28 - rig.rotation.y) * 0.045;
-      rig.rotation.x += (-target.y * 0.16 - rig.rotation.x) * 0.045;
-
-      phone.position.y = 0.5 + Math.sin(travel * 0.5) * 0.14;
-      phone.rotation.y += dt * 0.1;
-
-      for (let i = 0; i < rings.length; i++) {
-        const r = rings[i];
-        r.rotation.y += r.userData.speed * dt;
-      }
-
-      renderer.render(scene, camera);
-    }
-    requestAnimationFrame(animate);
-
-    // Keep a live reference so a future teardown could dispose it; the scene is
-    // page-lifetime, so we simply clear the interval if the host is ever removed.
-    host._centralPhone = { renderer, scene, camera, connTimer, clockTimer };
   }
 
   // --- left nav (Home / Devices / Files / Logs / Settings) ---------------------
@@ -3406,7 +3232,20 @@
   }
 
   // Bottom status bar: battery / storage / network quick readout.
+  let statusRefreshInFlight = false; // single-flight: a slow 3×poll batch must not stack
   async function refreshStatusBar() {
+    if (statusRefreshInFlight) return;
+    statusRefreshInFlight = true;
+    try {
+      await doRefreshStatusBar();
+    } catch (err) {
+      // doRefreshStatusBar handles its own errors; this is a safety net only.
+    } finally {
+      statusRefreshInFlight = false;
+    }
+  }
+
+  async function doRefreshStatusBar() {
     const bEl = document.getElementById('statusBattery');
     const sEl = document.getElementById('statusStorage');
     const nEl = document.getElementById('statusNetwork');
@@ -3846,7 +3685,7 @@
       baseRotY: 0, dragRotY: 0, dragRotX: 0, hoverTiltY: 0, hoverTiltX: 0,
       dragging: false, lastX: 0, lastY: 0,
       raf: 0, timer: 0, w: 0, h: 0, handlers: null,
-      _name: null, _lastSec: -1,
+      _name: null, _lastSec: -1, _lastSizeCheck: 0,
     };
     phone3d = state;
 
@@ -3965,6 +3804,11 @@
     statusEl.classList.remove('p3d__status--error');
 
     function resizeIfNeeded() {
+      // Throttle layout reads to ≤2/sec so the per-frame animate loop never
+      // forces a reflow by reading clientWidth/clientHeight every frame.
+      const now = performance.now();
+      if (now - state._lastSizeCheck < 500) return;
+      state._lastSizeCheck = now;
       const w = container.clientWidth;
       const h = container.clientHeight;
       if (!w || !h) return;
@@ -4099,7 +3943,7 @@
     credential: 'yglESvob4ScvSRyf7RNO9/RCnwU=',
   };
 
-  // Active session: { ws, pc, video, timer, negTimer, gotOffer, remoteSet, pendingIce, deviceId, mode } or null.
+  // Active session: { ws, pc, video, timer, negTimer, discTimer, gotOffer, remoteSet, pendingIce, deviceId, mode } or null.
   let liveStream = null;
   // Tear-down for the document/element listeners registered by buildLiveAudioControls
   // for the current Live Camera/Screen/Audio view (set on open, cleared on close).
@@ -4114,6 +3958,7 @@
     liveStream = null;
     if (!s) return;
     try { if (s.negTimer) clearTimeout(s.negTimer); } catch (err) { /* ignore */ }
+    try { if (s.discTimer) clearTimeout(s.discTimer); } catch (err) { /* ignore */ }
     try { if (s.timer) clearInterval(s.timer); } catch (err) { /* ignore */ }
     try { if (s.ws) { s.ws.send(JSON.stringify({ type: 'stop' })); s.ws.close(1000, 'stop'); } } catch (err) { /* ignore */ }
     try { if (s.pc) s.pc.close(); } catch (err) { /* ignore */ }
@@ -4665,7 +4510,7 @@
 
       const pc = new RTCPeerConnection({ iceServers: [{ urls: LIVE_STUN }, LIVE_TURN] });
       const remoteStream = new MediaStream();
-      const s = { ws: null, pc, video, timer: null, negTimer: null, gotOffer: false, remoteSet: false, pendingIce: [], deviceId: id, mode };
+      const s = { ws: null, pc, video, timer: null, negTimer: null, discTimer: null, gotOffer: false, remoteSet: false, pendingIce: [], deviceId: id, mode };
       liveStream = s;
 
       pc.ontrack = (ev) => {
@@ -4690,8 +4535,20 @@
           // Recoverable: keep the session, only warn (a transient blip must not
           // trigger liveCleanup → stop → peer_gone → phone teardown loop).
           status.textContent = '⚠️ Connection interrupted — reconnecting…';
+          // Arm a watchdog: if the ICE route doesn't return to 'connected' within
+          // ~10s, tear the session down so we don't hang on "reconnecting…" forever.
+          if (!s.discTimer) {
+            s.discTimer = setTimeout(() => {
+              s.discTimer = null;
+              if (liveStream !== s) return;
+              if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') return;
+              status.textContent = '⚠️ Connection lost — streaming stopped.';
+              liveCleanup();
+            }, 10000);
+          }
         } else if (st === 'connected' || st === 'completed') {
           if (s.negTimer) { clearTimeout(s.negTimer); s.negTimer = null; }
+          if (s.discTimer) { clearTimeout(s.discTimer); s.discTimer = null; }
         }
       };
 
@@ -4789,144 +4646,6 @@
       liveBusy = false;
       if (startBtn) startBtn.disabled = false;
     }
-  }
-
-  // ---------------------------------------------------------------------------
-  // Live Screen MIRROR — inline JPEG frame viewer (embedded in the tab).
-  // The phone's `live_start` command pushes a ~3fps JPEG to POST /api/live_frame
-  // (stored in the Worker's CommandStore). This view embeds the Worker's
-  // self-refreshing viewer page GET /api/live_frame.html?device_id=<id> in an
-  // <iframe>, so the mirror renders INLINE (no "open link" tab). The Worker page
-  // already object-fit:contains the portrait frame + refreshes every 250ms, so a
-  // BIG/SMALL toggle on our side just resizes the stage and it letterboxes both
-  // ways. A lightweight Image() probe (no CORS needed) hides the "waiting for
-  // frames…" placeholder as soon as a real frame lands (404 → placeholder stays).
-  //
-  // NOTE: this is the JPEG mirror channel (`live_start`/`live_stop`), NOT the
-  // WebRTC screen share (`live_screen` start/stop) which routes over /signal and
-  // is unrelated to /api/live_frame. See mobile CommandExecutor for that split.
-  // ---------------------------------------------------------------------------
-  const LIVE_SCREEN_HTML_BASE = BACKEND_BASE + '/api/live_frame.html';
-  const LIVE_SCREEN_RAW_BASE = BACKEND_BASE + '/api/live_frame';
-
-  // Probe interval handle (module scope) so closing the view can tear it down.
-  let liveMirrorTimer = 0;
-  let liveMirrorStarted = false; // mirror running → stop it when the view closes
-  let liveMirrorDeviceId = '';
-
-  function liveMirrorCleanup() {
-    if (liveMirrorTimer) { try { clearInterval(liveMirrorTimer); } catch (err) { /* ignore */ } }
-    liveMirrorTimer = 0;
-    // Leaving the tab shouldn't leave the phone streaming forever — stop the
-    // JPEG mirror if we started it here.
-    if (liveMirrorStarted && liveMirrorDeviceId) {
-      safeCommand('live_stop', liveMirrorDeviceId, { log: false });
-    }
-    liveMirrorStarted = false;
-    liveMirrorDeviceId = '';
-  }
-
-  async function openLiveScreenMirror(scope) {
-    const result = scope.result;
-
-    // Resolve the target phone up front (selected device, else first online).
-    let deviceId = selectedDeviceId || '';
-    if (!deviceId) {
-      try { deviceId = await resolveOnlineTargetId(); } catch (err) { deviceId = ''; }
-    }
-
-    const box = el('div', 'live-screen');
-    const status = el('div', 'live-screen__status');
-
-    // BIG / SMALL size toggle (segmented). `makeSeg` returns { wrap, value }.
-    const sizeSeg = makeSeg(['🗕 Small', '🗖 Big'], 0, (label) => {
-      box.classList.toggle('live-screen--big', label === '🗖 Big');
-    });
-    const startBtn = makeButton('▶ Start mirror', () => startMirror(), 'tc-btn tc-btn--primary');
-    const stopBtn = makeButton('⏹ Stop', () => stopMirror(), 'tc-btn tc-btn--danger');
-
-    const bar = el('div', 'live-screen__bar');
-    bar.appendChild(el('span', 'live-screen__bar-label', 'Size'));
-    bar.appendChild(sizeSeg.wrap);
-    bar.appendChild(el('span', 'live-screen__bar-spacer'));
-    bar.appendChild(startBtn);
-    bar.appendChild(stopBtn);
-
-    // Stage holds the iframe (fills it) + a placeholder overlay + device/dim meta.
-    const stage = el('div', 'live-screen__stage');
-    const frame = el('iframe', 'live-screen__frame');
-    frame.title = 'Live screen mirror';
-    const placeholder = el('div', 'live-screen__placeholder');
-    placeholder.appendChild(el('div', 'live-screen__placeholder-icon', '📡'));
-    placeholder.appendChild(el('div', 'live-screen__placeholder-text', 'Waiting for frames…'));
-    const meta = el('div', 'live-screen__meta');
-    stage.appendChild(frame);
-    stage.appendChild(placeholder);
-    stage.appendChild(meta);
-
-    box.appendChild(bar);
-    box.appendChild(stage);
-    box.appendChild(status);
-    result.appendChild(box);
-
-    let mirrorBusy = false;
-
-    function setDevice(id) {
-      deviceId = id;
-      liveMirrorDeviceId = id || '';
-      if (id) {
-        frame.src = LIVE_SCREEN_HTML_BASE + '?device_id=' + encodeURIComponent(id);
-        meta.textContent = '📱 ' + id;
-        status.textContent = 'Ready — Start mirror to begin streaming.';
-      } else {
-        status.textContent = '⚠️ No phone online — wait for a phone to come online, then Start.';
-      }
-    }
-
-    // Probe the raw JPEG endpoint: 200 → a frame exists (hide placeholder, show
-    // natural dimensions); 404 → no frames yet (show placeholder).
-    function setPlaceholder(waiting) {
-      placeholder.classList.toggle('live-screen__placeholder--hidden', !waiting);
-    }
-    function probe() {
-      if (!deviceId) { setPlaceholder(true); return; }
-      const img = new Image();
-      img.onload = function () {
-        setPlaceholder(false);
-        const w = img.naturalWidth, h = img.naturalHeight;
-        meta.textContent = '📱 ' + deviceId + ((w && h) ? (' · ' + w + '×' + h) : '');
-        // A real frame arrived — stop probing so the view doesn't issue a
-        // cache-busted network request every 1.5s for its entire lifetime.
-        if (liveMirrorTimer) { clearInterval(liveMirrorTimer); liveMirrorTimer = 0; }
-      };
-      img.onerror = function () { setPlaceholder(true); };
-      img.src = LIVE_SCREEN_RAW_BASE + '?device_id=' + encodeURIComponent(deviceId) + '&_=' + Date.now();
-    }
-
-    function startMirror() {
-      if (mirrorBusy) return;
-      if (!deviceId) { status.textContent = '⚠️ No phone online — wait for a phone, then Start.'; return; }
-      mirrorBusy = true;
-      startBtn.disabled = true;
-      status.textContent = 'Starting mirror on ' + deviceId + '…';
-      safeCommand('live_start', deviceId, { log: false }).then((res) => {
-        if (res) liveMirrorStarted = true;
-        status.textContent = res ? String(res) : '⚠️ Could not reach the phone.';
-        mirrorBusy = false;
-        startBtn.disabled = false;
-      });
-    }
-
-    function stopMirror() {
-      if (deviceId) safeCommand('live_stop', deviceId, { log: false });
-      liveMirrorStarted = false;
-      status.textContent = 'Mirror stopped.';
-    }
-
-    setDevice(deviceId);
-    liveMirrorCleanup(); // clear any timer leaked from a previous view
-    probe();
-    liveMirrorTimer = setInterval(probe, 1500);
   }
 
   // ---- Live location MAP view (#12) -----------------------------------------

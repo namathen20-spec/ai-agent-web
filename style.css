@@ -2289,24 +2289,7 @@ select {
   mask-image: linear-gradient(to top, #000, transparent 90%);
 }
 
-/* central holographic phone layer — sits above the hero, behind the UI */
-.central3d {
-  position: fixed;
-  inset: 0;
-  z-index: 1;
-  pointer-events: none;
-  opacity: 0.72;
-}
-.central3d canvas {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  display: block;
-  pointer-events: none;
-}
-
-/* shell sits above the central phone */
+/* shell sits above the phone */
 .cc {
   z-index: 2;
   max-width: 1240px;
@@ -2502,10 +2485,9 @@ select {
   box-shadow: 0 0 8px rgba(245, 158, 11, 0.5);
 }
 
-/* ---- responsive: nav → icon rail / top bar, hide central phone ---- */
+/* ---- responsive: nav → icon rail / top bar ---- */
 @media (max-width: 760px) {
   .cc-body { flex-direction: column; }
-  .central3d { display: none; }
   .bg-floor { height: 30%; }
   .cc-nav {
     flex: 0 0 auto;
@@ -2528,9 +2510,9 @@ select {
 
 /* =====================================================================
    THREE-ZONE LAYOUT — LEFT cards | CENTER holographic phone | RIGHT cards
-   (task: split the 23 tiles into two flanking columns around the fixed
-   #central3d Three.js phone). Appended last so it cleanly overrides the
-   legacy flat `.grid` without touching any functional selector above.
+   (task: split the 23 tiles into two flanking columns around the pure-CSS
+   phone). Appended last so it cleanly overrides the legacy flat `.grid`
+   without touching any functional selector above.
    ===================================================================== */
 
 /* Desktop: 3-column grid — left (~28%) | center phone gap (~44%) | right (~28%) */
@@ -2559,7 +2541,7 @@ select {
   grid-template-columns: repeat(2, minmax(0, 1fr)); /* 15 tiles, two sub-columns */
 }
 
-/* Center phone region — transparent on desktop so the fixed #central3d scene
+/* Center phone region — transparent on desktop so the fixed CSS phone
    (phone + rings + circular platform) shows straight through the gap. */
 .grid-center {
   grid-area: center;
@@ -2628,7 +2610,6 @@ select {
 /* ---- Mobile (~<860px): stack — phone first (compact), then all 23 tiles
    in a responsive 2-col grid (scrollable; no horizontal overflow). ---- */
 @media (max-width: 860px) {
-  .central3d { display: none; }   /* fixed full-viewport scene → compact fallback */
   .grid {
     display: flex;
     flex-direction: column;
@@ -2913,9 +2894,9 @@ select {
 
 /* =====================================================================
    AURA HOLOGRAPHIC PHONE + exact 10/13 tile split + topbar/sidebar/HUD
-   polish (Wave 3). The central #central3d Three.js scene is gone — the
-   phone is now pure CSS/HTML inside #gridCenter. Appended last so it
-   cleanly overrides the legacy 28/44/28 grid + 2-col right rail.
+   polish (Wave 3). The central phone is now pure CSS/HTML inside #gridCenter
+   (no separate Three.js scene). Appended last so it cleanly overrides the
+   legacy 28/44/28 grid + 2-col right rail.
    ===================================================================== */
 
 /* ---- grid: left block | center (min phone width) | right block ---- */
@@ -2943,9 +2924,6 @@ select {
   justify-content: center;
 }
 .tile--wide { grid-column: 1 / -1; }        /* card #23 (LIVE CAMERA) spans full row */
-
-/* central fixed scene is retired — safety net if the div ever reappears */
-.central3d { display: none; }
 
 /* ---- stack (small/tablet): phone first, then both rails in 2 columns ---- */
 @media (max-width: 1199px) {
