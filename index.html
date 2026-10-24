@@ -34,7 +34,7 @@
     rel="stylesheet"
   />
 
-  <link rel="stylesheet" href="style.css?v=31" />
+  <link rel="stylesheet" href="style.css?v=32" />
 </head>
 <body>
   <!-- ===================== Security-key gate (lock screen) ===================== -->
@@ -73,8 +73,7 @@
     <div class="bg-floor" aria-hidden="true"></div>
   </div>
 
-  <!-- ===================== Central holographic phone (real Three.js, behind the UI) ===================== -->
-  <div class="central3d" id="central3d" aria-hidden="true"></div>
+  <!-- ===================== Central holographic phone (pure CSS/HTML, rendered into #gridCenter) ===================== -->
 
   <!-- ===================== Tactical HUD overlays (CRT + targeting grid) ===================== -->
   <div class="hud-grid" aria-hidden="true"></div>
@@ -93,11 +92,15 @@
           </svg>
         </span>
         <div class="brand__text">
-          <h1>AI Agent — Control Center</h1>
+          <div class="brand__title-row">
+            <h1>AI Agent — Control Center</h1>
+            <span class="brand__badge">ONLINE v4.2</span>
+          </div>
           <p class="brand__sub">AI AGENT · PHONE REMOTE</p>
         </div>
       </div>
       <div class="cc-header__controls">
+        <button class="notif-btn" id="soundToggle" type="button" title="Sound on" aria-label="Toggle sound">🔊</button>
         <select id="deviceSelect" class="device-select" title="Target phone" aria-label="Target phone">
           <option value="">📱 Auto device</option>
         </select>
@@ -115,7 +118,7 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
               <path d="M4 6h16a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H9l-4 4v-4H4a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1z" />
             </svg>
-          </span> AI Chat
+          </span> AI CHAT
         </button>
       </div>
     </header>
@@ -164,7 +167,7 @@
         </div>
         <div class="grid" id="tileGrid" aria-live="polite">
           <div class="grid-col grid-col--left" id="gridLeft"></div>
-          <div class="grid-center" id="gridCenter" aria-hidden="true"></div>
+          <div class="grid-center" id="gridCenter"></div>
           <div class="grid-col grid-col--right" id="gridRight"></div>
         </div>
       </section>
@@ -305,6 +308,6 @@
     </form>
   </aside>
 
-  <script src="app.js?v=58"></script>
+  <script src="app.js?v=59"></script>
 </body>
 </html>

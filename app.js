@@ -501,6 +501,7 @@
   const tileGrid = $('#tileGrid');
   const gridLeft = $('#gridLeft');
   const gridRight = $('#gridRight');
+  const gridCenter = $('#gridCenter');
   const toolTitle = $('#toolTitle');
   const toolControlsEl = $('#toolControls');
   const toolResultEl = $('#toolResult');
@@ -1481,6 +1482,7 @@
       if (label) label.textContent = devicesCache.length ? 'phone offline' : 'no phone';
     }
     updateStatusModule();
+    updatePhoneStatus();
   }
 
   // Three-part live status module (Device Connected / Online · battery / Live
@@ -1863,6 +1865,8 @@
   async function runCommand(command, kind, targetEl) {
     if (ccBusy) return;
     ccBusy = true;
+    // Screenshot → flash the central CSS phone screen white (~300ms).
+    if (typeof command === 'string' && /^screenshot/.test(command.trim().toLowerCase())) flashPhoneScreen();
     const out = targetEl || toolResultEl;
     out.innerHTML = '';
     const loader = el('div', 'result-loading');
@@ -2407,11 +2411,11 @@
     return tile;
   }
 
-  // Three-zone layout: LEFT card column | CENTER holographic phone (fixed
-  // #central3d scene behind the UI) | RIGHT card column. Each tile keeps its
-  // original flat index (drives the number badge + left-nav "scroll to tile"
-  // mapping) but is placed into a column by its id. Tile defs/handlers unchanged.
-  const LEFT_TILE_IDS = ['camera', 'screenshot', 'tap', 'sms', 'notifs', 'lifelog', 'gallery', 'devices'];
+  // AURA reference split — LEFT block 10 cards (2 columns) | CENTER CSS phone |
+  // RIGHT block 13 cards (2 columns small / 3 columns desktop, #23 spans full).
+  // Keyed by tool/special id (1:1 with the reference 01…23 numbers).
+  const LEFT_TILE_IDS = ['camera', 'screenshot', 'tap', 'sms', 'notifs', 'lifelog', 'gallery', 'devices', 'liveaudio', 'livescreen'];
+  const RIGHT_TILE_IDS = ['audio', 'screenrecord', 'location', 'calllog', 'contacts', 'files', 'battery', 'status', 'history', 'map', 'tasks', 'phone3d', 'livecamera'];
 
   function renderGrid() {
     gridLeft.innerHTML = '';
@@ -2421,6 +2425,7 @@
     const place = (spec, onOpen, idx) => {
       const tile = buildTile(spec, onOpen, idx);
       tile.style.animationDelay = (idx * 30) + 'ms';
+      if (spec.id === 'livecamera') tile.classList.add('tile--wide'); // #23 spans full width
       (LEFT_TILE_IDS.indexOf(spec.id) !== -1 ? gridLeft : gridRight).appendChild(tile);
       tilesByIndex[idx] = tile;
     };
@@ -2429,6 +2434,270 @@
     SPECIALS.forEach((spec, i) => place(spec, (s) => enterView(s.label, s.onClose, s.build), TOOLS.length + i));
 
     tileGrid._tilesByIndex = tilesByIndex;
+  }
+
+  // ---------------------------------------------------------------------------
+  // AURA central holographic phone — a pure CSS/HTML phone rendered inside
+  // #gridCenter (replaces the old fixed #central3d Three.js scene). The lock
+  // screen clock/date are the REAL client time (1s tick); the agent-status pill
+  // reflects the REAL connection state from devicesCache (online/offline/
+  // connecting); the dock + "PHONE 3D" button call the exact same openTool/
+  // enterView handlers as the grid tiles. Decorative only where noted — no fake
+  // data.
+  // ---------------------------------------------------------------------------
+
+  const PHONE_ICON_ATTRS = 'viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"';
+  const phoneShieldSvg = '<svg ' + PHONE_ICON_ATTRS + '><path d="M12 3l7 3v5.2c0 4.6-3.1 8.1-7 9.8-3.9-1.7-7-5.2-7-9.8V6l7-3z"/><path d="M9 12l2 2 4-4"/></svg>';
+  const phoneWifiSvg = '<svg ' + PHONE_ICON_ATTRS + '><path d="M2.5 8.6a14 14 0 0 1 19 0M5.6 12a9.6 9.6 0 0 1 12.8 0M8.7 15.4a5.2 5.2 0 0 1 6.6 0"/><circle cx="12" cy="18.6" r="1"/></svg>';
+  const phoneBatterySvg = '<svg ' + PHONE_ICON_ATTRS + '><rect x="3" y="8" width="16" height="8" rx="2"/><path d="M21 10.5v3"/><rect x="5" y="10" width="8.5" height="4" rx="1"/></svg>';
+
+  // Open a tile by its id — reuses the existing grid handlers (openTool for the
+  // plain tools, enterView for the special 3D/live/map/history views).
+  function openToolById(id) {
+    const tool = TOOLS.find((t) => t.id === id);
+    if (tool) { openTool(tool); return; }
+    const spec = SPECIALS.find((s) => s.id === id);
+    if (spec) enterView(spec.label, spec.onClose, spec.build);
+  }
+
+  let holoPhone = null; // live ref to the CSS phone's sub-elements + cleanup
+
+  function updatePhoneClock() {
+    if (!holoPhone) return;
+    const d = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    const hh = pad(d.getHours()), mm = pad(d.getMinutes());
+    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const time = hh + ':' + mm;
+    holoPhone.clock.textContent = time;
+    holoPhone.time.textContent = time;
+    holoPhone.date.textContent = days[d.getDay()] + ', ' + d.getDate() + ' ' + months[d.getMonth()];
+  }
+
+  function updatePhoneStatus() {
+    if (!holoPhone) return;
+    const s = centralConnectionLabel();
+    const state = s.tag === 'ONLINE' ? 'online' : (s.tag === 'OFFLINE' ? 'offline' : 'connecting');
+    const text = s.tag === 'ONLINE' ? 'AGENT ONLINE' : (s.tag === 'OFFLINE' ? 'OFFLINE' : 'CONNECTING');
+    holoPhone.pill.className = 'holo-phone__pill holo-phone__pill--' + state;
+    holoPhone.pillDot.className = 'holo-phone__pill-dot holo-phone__pill-dot--' + state;
+    holoPhone.pillText.textContent = text;
+    holoPhone.pill.title = (s.tag === 'ONLINE' && s.sub) ? ('Connected — ' + s.sub) : '';
+    holoPhone.hint.textContent = (s.tag === 'ONLINE' && s.sub)
+      ? s.sub
+      : 'Tap dock apps or outer cyber cards to command remote device';
+  }
+
+  function flashPhoneScreen() {
+    if (!holoPhone || !holoPhone.flash) return;
+    holoPhone.flash.classList.remove('is-flash');
+    void holoPhone.flash.offsetWidth;
+    holoPhone.flash.classList.add('is-flash');
+    clearTimeout(holoPhone._flashTimer);
+    holoPhone._flashTimer = setTimeout(() => holoPhone.flash.classList.remove('is-flash'), 300);
+  }
+
+  function buildHolographicPhone() {
+    if (!gridCenter) return null;
+    gridCenter.innerHTML = '';
+    const fine = !!(window.matchMedia && window.matchMedia('(pointer: fine)').matches);
+    const touch = !!(window.matchMedia && window.matchMedia('(hover: none)').matches);
+    const reduced = prefersReducedMotion();
+    // Particles + mouse parallax only on fine pointers; always off for touch /
+    // reduced-motion. The phone itself always renders.
+    const animate = fine && !touch && !reduced;
+
+    const root = el('div', 'holo-phone');
+
+    // vertical light beam
+    root.appendChild(el('div', 'holo-phone__beam'));
+
+    // tilt (parallax) → float (holo-float) → body
+    const tilt = el('div', 'holo-phone__tilt');
+    const float = el('div', 'holo-phone__float');
+    const body = el('div', 'holo-phone__body');
+    const bezel = el('div', 'holo-phone__bezel');
+
+    // cosmic wallpaper + scanlines
+    const wallpaper = el('div', 'holo-phone__wallpaper');
+    const scan = el('div', 'holo-phone__scanlines');
+
+    // top notch row
+    const notch = el('div', 'holo-phone__notch');
+    const clock = el('span', 'holo-phone__clock', '--:--');
+    const island = el('span', 'holo-phone__island');
+    island.appendChild(el('i', 'holo-phone__island-dot'));
+    island.appendChild(el('i', 'holo-phone__island-cam'));
+    const statusR = el('span', 'holo-phone__status');
+    statusR.appendChild(el('span', 'holo-phone__g5', '5G'));
+    const wifi = el('span', 'holo-phone__glyph');
+    wifi.innerHTML = phoneWifiSvg; // static authored SVG — safe
+    statusR.appendChild(wifi);
+    const batt = el('span', 'holo-phone__glyph holo-phone__glyph--batt');
+    batt.innerHTML = phoneBatterySvg; // static authored SVG — safe
+    statusR.appendChild(batt);
+    notch.appendChild(clock);
+    notch.appendChild(island);
+    notch.appendChild(statusR);
+
+    // main lock-screen content
+    const main = el('div', 'holo-phone__main');
+    main.appendChild(el('div', 'holo-phone__pulse'));
+    const time = el('h2', 'holo-phone__time', '--:--');
+    const date = el('p', 'holo-phone__date', '');
+    const pill = el('div', 'holo-phone__pill holo-phone__pill--connecting');
+    const pillDot = el('span', 'holo-phone__pill-dot holo-phone__pill-dot--connecting');
+    const pillIcon = el('span', 'holo-phone__pill-icon');
+    pillIcon.innerHTML = phoneShieldSvg; // static authored SVG — safe
+    const pillText = el('span', 'holo-phone__pill-text', 'CONNECTING');
+    pill.appendChild(pillDot);
+    pill.appendChild(pillIcon);
+    pill.appendChild(pillText);
+    const hint = el('p', 'holo-phone__hint', 'Tap dock apps or outer cyber cards to command remote device');
+    main.appendChild(time);
+    main.appendChild(date);
+    main.appendChild(pill);
+    main.appendChild(hint);
+
+    // app dock (opens real tiles via openToolById)
+    const dock = el('div', 'holo-phone__dock');
+    const dockbar = el('div', 'holo-phone__dockbar');
+    const appDefs = [
+      { id: 'calllog', cls: 'holo-phone__app--green', icon: 'calllog' },
+      { id: 'sms', cls: 'holo-phone__app--cyan', icon: 'sms' },
+      { id: 'camera', cls: 'holo-phone__app--pink', icon: 'camera' },
+      { id: 'phone3d', cls: 'holo-phone__app--amber', icon: 'phone3d' },
+    ];
+    appDefs.forEach((a) => {
+      const b = el('button', 'holo-phone__app ' + a.cls);
+      b.type = 'button';
+      b.title = a.id === 'phone3d' ? 'PHONE 3D' : a.id.toUpperCase();
+      b.setAttribute('aria-label', b.title);
+      const ic = el('span', 'holo-phone__app-icon');
+      ic.innerHTML = TILE_ICONS[a.icon] || ''; // static authored SVG — safe
+      b.appendChild(ic);
+      b.addEventListener('click', () => openToolById(a.id));
+      dockbar.appendChild(b);
+    });
+    dock.appendChild(dockbar);
+    dock.appendChild(el('div', 'holo-phone__gesture'));
+
+    // screenshot flash overlay (top of the screen)
+    const flash = el('div', 'holo-phone__flash');
+
+    bezel.appendChild(wallpaper);
+    bezel.appendChild(scan);
+    bezel.appendChild(notch);
+    bezel.appendChild(main);
+    bezel.appendChild(dock);
+    bezel.appendChild(flash);
+    body.appendChild(bezel);
+    float.appendChild(body);
+
+    // floating PHONE 3D button under the phone
+    const p3d = el('button', 'holo-phone__phone3d');
+    p3d.type = 'button';
+    p3d.innerHTML = '<span class="holo-phone__phone3d-icon">✦</span><span>PHONE 3D</span>'; // static label
+    p3d.addEventListener('click', () => openToolById('phone3d'));
+    float.appendChild(p3d);
+
+    tilt.appendChild(float);
+    root.appendChild(tilt);
+
+    // pedestal — particle vortex canvas + rotating rings + metallic platform
+    const pedestal = el('div', 'holo-phone__pedestal');
+    const canvas = el('canvas', 'holo-phone__particles');
+    canvas.width = 320;
+    canvas.height = 80;
+    pedestal.appendChild(canvas);
+    pedestal.appendChild(el('div', 'holo-phone__ring holo-phone__ring--cyan'));
+    pedestal.appendChild(el('div', 'holo-phone__ring holo-phone__ring--blue'));
+    pedestal.appendChild(el('div', 'holo-phone__ring holo-phone__ring--purple'));
+    const platform = el('div', 'holo-phone__platform');
+    platform.appendChild(el('div', 'holo-phone__platform-strip'));
+    pedestal.appendChild(platform);
+    root.appendChild(pedestal);
+
+    gridCenter.appendChild(root);
+
+    // particle vortex (cyan/violet dots floating up) — fine pointers only
+    let particleCleanup = null;
+    if (animate && canvas.getContext) {
+      const ctx = canvas.getContext('2d');
+      const particles = Array.from({ length: 40 }, () => ({
+        x: Math.random() * 320,
+        y: Math.random() * 80,
+        r: Math.random() * 1.8 + 0.6,
+        vy: Math.random() * 0.7 + 0.35,
+        hue: Math.random() > 0.45 ? 190 : 280,
+        a: Math.random() * 0.65 + 0.2,
+      }));
+      let raf = 0;
+      const render = () => {
+        raf = requestAnimationFrame(render);
+        ctx.clearRect(0, 0, 320, 80);
+        for (let i = 0; i < particles.length; i++) {
+          const p = particles[i];
+          p.y -= p.vy;
+          if (p.y < -2) { p.y = 82; p.x = Math.random() * 320; }
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+          ctx.fillStyle = 'hsla(' + p.hue + ', 92%, 65%, ' + p.a + ')';
+          ctx.shadowBlur = 7;
+          ctx.shadowColor = 'hsla(' + p.hue + ', 100%, 70%, 0.8)';
+          ctx.fill();
+        }
+      };
+      render();
+      particleCleanup = () => cancelAnimationFrame(raf);
+    }
+
+    // mouse parallax tilt (±16°, lerp/eased) — fine pointers only
+    let parallaxCleanup = null;
+    if (animate) {
+      let raf = 0;
+      let tgtX = 0, tgtY = 0, curX = 0, curY = 0;
+      const apply = () => {
+        raf = requestAnimationFrame(apply);
+        curX += (tgtX - curX) * 0.1;
+        curY += (tgtY - curY) * 0.1;
+        tilt.style.transform = 'rotateY(' + curX.toFixed(2) + 'deg) rotateX(' + curY.toFixed(2) + 'deg)';
+      };
+      const onMove = (e) => {
+        const r = tilt.getBoundingClientRect();
+        if (!r.width || !r.height) return;
+        tgtX = ((e.clientX - r.left) / r.width - 0.5) * 32;   // ±16°
+        tgtY = ((e.clientY - r.top) / r.height - 0.5) * -32;
+      };
+      const onLeave = () => { tgtX = 0; tgtY = 0; };
+      tilt.addEventListener('pointermove', onMove);
+      tilt.addEventListener('pointerleave', onLeave);
+      raf = requestAnimationFrame(apply);
+      parallaxCleanup = () => {
+        if (raf) cancelAnimationFrame(raf);
+        tilt.removeEventListener('pointermove', onMove);
+        tilt.removeEventListener('pointerleave', onLeave);
+      };
+    }
+
+    const clockTimer = setInterval(updatePhoneClock, 1000);
+    const statusTimer = setInterval(updatePhoneStatus, 8000);
+
+    holoPhone = {
+      clock, time, date, pill, pillDot, pillText, flash, hint,
+      _flashTimer: 0,
+      cleanup() {
+        clearInterval(clockTimer);
+        clearInterval(statusTimer);
+        if (particleCleanup) particleCleanup();
+        if (parallaxCleanup) parallaxCleanup();
+        if (holoPhone === this) holoPhone = null;
+      },
+    };
+    updatePhoneClock();
+    updatePhoneStatus();
+    return holoPhone;
   }
 
   // ---------------------------------------------------------------------------
@@ -3438,6 +3707,7 @@
   // on the first user gesture; fully skipped for reduced-motion / no audio.
   let audioCtx = null;
   let audioUnavailable = false;
+  let soundEnabled = true; // header 🔊/🔇 toggle gates the tap/hover audio
 
   function ensureAudio() {
     if (prefersReducedMotion() || audioUnavailable) return null;
@@ -3471,10 +3741,30 @@
   function initSound() {
     if (prefersReducedMotion()) return;
     document.addEventListener('click', (e) => {
+      if (!soundEnabled) return;
       const t = e.target && e.target.closest ? e.target.closest('button, .tile, summary, a.result-dl, a.result-maps, .msg__media-dl') : null;
       if (!t || t.disabled) return;
       playTap();
     }, true);
+  }
+
+  // ---- header sound on/off toggle (🍪 optional, EN only) ---------------------
+  const soundToggle = $('#soundToggle');
+  function applySoundToggle() {
+    if (!soundToggle) return;
+    soundToggle.textContent = soundEnabled ? '🔊' : '🔇';
+    soundToggle.title = soundEnabled ? 'Sound on' : 'Sound off';
+    soundToggle.setAttribute('aria-label', soundToggle.title);
+    soundToggle.setAttribute('aria-pressed', soundEnabled ? 'true' : 'false');
+    soundToggle.classList.toggle('notif-btn--offline', !soundEnabled);
+  }
+  if (soundToggle) {
+    soundToggle.addEventListener('click', () => {
+      soundEnabled = !soundEnabled;
+      applySoundToggle();
+      if (soundEnabled) playTap();
+    });
+    applySoundToggle();
   }
 
   // ---- Phone 3D view (#9, Three.js loaded lazily) ----------------------------
@@ -5322,6 +5612,7 @@
   initStatusClock();
 
   renderGrid();
+  buildHolographicPhone();
   initTileReveal();
   initSound();
   initNav();
@@ -5329,8 +5620,9 @@
   // Defer the 3D hero until after first paint (`load`) so the UI renders
   // instantly; initHero3d() then lazily loads Three.js and builds the scene on
   // desktop only (detected internally: pointer:fine, no reduced-motion, WebGL).
-  if (document.readyState === 'complete') { initHero3d(); initCentralPhone(); }
-  else window.addEventListener('load', () => { initHero3d(); initCentralPhone(); }, { once: true });
+  // The central phone is now pure CSS/HTML (#gridCenter) — no Three.js scene.
+  if (document.readyState === 'complete') { initHero3d(); }
+  else window.addEventListener('load', () => { initHero3d(); }, { once: true });
 
   refreshMcpStatus();
   renderMcpTools();
