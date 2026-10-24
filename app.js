@@ -21,6 +21,8 @@
   const BACKEND_BASE = 'https://ai-agent-backend.ai-agent-backend.workers.dev';
   const BACKEND_CHAT_URL = BACKEND_BASE + '/api/chat';
   const BACKEND_DEVICES_URL = BACKEND_BASE + '/api/devices';
+  // Fast auth-only probe for the unlock gate (no relay round-trip → instant).
+  const BACKEND_VERIFY_URL = BACKEND_BASE + '/api/verify';
   // Direct raw-relay command endpoint. New contract: POST /api/command returns
   // { ok, command_id } immediately, then GET /api/result?id=<command_id> polls
   // until { ok, result } is ready (or { ok: false, pending: true } meanwhile).
@@ -1918,7 +1920,9 @@
   }
 
   function fmBase64ToBytes(b64) {
-    const s = String(b64 == null ? '' : b64).replace(/[\s\r\n]+/g, '');
+    let s = String(b64 == null ? '' : b64).replace(/[\s\r\n]+/g, '');
+    s = s.replace(/-/g, '+').replace(/_/g, '/');
+    while (s.length % 4) s += '=';
     const bin = atob(s);
     const bytes = new Uint8Array(bin.length);
     for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
@@ -1945,6 +1949,12 @@
       webp: 'image/webp', bmp: 'image/bmp', svg: 'image/svg+xml',
       mp3: 'audio/mpeg', wav: 'audio/wav', ogg: 'audio/ogg', m4a: 'audio/mp4', aac: 'audio/aac',
       mp4: 'video/mp4', webm: 'video/webm', mov: 'video/quicktime', mkv: 'video/x-matroska', '3gp': 'video/3gpp',
+      pdf: 'application/pdf', txt: 'text/plain', md: 'text/markdown', log: 'text/plain',
+      csv: 'text/csv', json: 'application/json', xml: 'text/xml', html: 'text/html', htm: 'text/html',
+      zip: 'application/zip', apk: 'application/vnd.android.package-archive',
+      doc: 'application/msword', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      xls: 'application/vnd.ms-excel', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      ppt: 'application/vnd.ms-powerpoint', pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
     };
     if (byExt[ext]) return byExt[ext];
     // Magic-byte sniff as a fallback.
@@ -2057,7 +2067,17 @@
       if (mv.tagName === 'VIDEO') mv.playsInline = true;
       mv.src = url;
       container.appendChild(mv);
-    } else if (mime === 'text/plain' || mime.startsWith('text/') || fmIsText(bytes)) {
+    } else if (mime === 'application/pdf') {
+      const embed = el('embed', 'fm__pdf');
+      embed.src = url;
+      embed.type = 'application/pdf';
+      container.appendChild(embed);
+      const openLink = el('a', 'result-dl', '↗ Open in new tab');
+      openLink.href = url;
+      openLink.target = '_blank';
+      openLink.rel = 'noopener';
+      container.appendChild(openLink);
+    } else if (mime === 'text/plain' || mime.startsWith('text/') || mime === 'application/json' || mime === 'application/xml' || fmIsText(bytes)) {
       let content = '';
       try { content = new TextDecoder('utf-8').decode(bytes); } catch (err) { content = ''; }
       const MAX_TXT = 256 * 1024;
@@ -4680,10 +4700,19 @@
         // on ANY failure (401/403/non-ok/network error) so a bad key can't linger.
         let res;
         try {
-          res = await fetch(BACKEND_DEVICES_URL, { headers: { 'X-Web-Key': key } });
+          // Verify against a FAST auth-only endpoint (no relay round-trip) so the
+          // gate unlocks instantly even while the render relay is cold-starting.
+          // A hard 10s timeout prevents an indefinite "checking" hang.
+          const ctrl = new AbortController();
+          const t = setTimeout(() => ctrl.abort(), 10000);
+          try {
+            res = await fetch(BACKEND_VERIFY_URL, { headers: { 'X-Web-Key': key }, signal: ctrl.signal });
+          } finally { clearTimeout(t); }
         } catch (err) {
           try { localStorage.removeItem('agentWebKey'); } catch { /* ignore */ }
-          failGate('⚠️ Backend unreachable — could not verify your key.');
+          failGate(err && err.name === 'AbortError'
+            ? '⚠️ Backend is slow to respond — try again in a moment.'
+            : '⚠️ Backend unreachable — could not verify your key.');
           return;
         }
 
