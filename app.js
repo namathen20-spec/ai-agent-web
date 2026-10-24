@@ -58,7 +58,7 @@
   // ---------------------------------------------------------------------------
   const TOOLS = [
     {
-      id: 'camera', emoji: '📷', label: 'Camera', sub: 'Back / front photo', color: '#1677ff',
+      id: 'camera', emoji: '📷', label: 'Camera', sub: 'Back / front photo', color: '#77fdfe',
       build(scope) {
         scope.controls.appendChild(el('span', 'tool-controls__label', 'Lens'));
         let lens = 'back';
@@ -78,7 +78,7 @@
       },
     },
     {
-      id: 'screenshot', emoji: '📸', label: 'Screenshot', sub: 'Snap the screen', color: '#00e5ff',
+      id: 'screenshot', emoji: '📸', label: 'Screenshot', sub: 'Snap the screen', color: '#77fdfe',
       build(scope) {
         scope.controls.appendChild(
           makeButton('📸 Capture', () => scope.run('screenshot_link', 'image'), 'tc-btn tc-btn--primary')
@@ -86,7 +86,7 @@
       },
     },
     {
-      id: 'audio', emoji: '🎤', label: 'Audio', sub: 'Record mic · WAV', color: '#00f0e0',
+      id: 'audio', emoji: '🎤', label: 'Audio', sub: 'Record mic · WAV', color: '#77fdfe',
       build(scope) {
         scope.controls.appendChild(el('span', 'tool-controls__label', 'Duration (seconds)'));
         const seg = makeSeg(['10', '30', '60'], 0);
@@ -97,7 +97,7 @@
       },
     },
     {
-      id: 'screenrecord', emoji: '🎥', label: 'Screen Record', sub: 'Record the screen', color: '#ff4d6d',
+      id: 'screenrecord', emoji: '🎥', label: 'Screen Record', sub: 'Record the screen', color: '#f07785',
       build(scope) {
         scope.controls.appendChild(el('span', 'tool-controls__label', 'Duration (seconds)'));
         const seg = makeSeg(['10', '30', '60'], 0);
@@ -108,7 +108,7 @@
       },
     },
     {
-      id: 'location', emoji: '📍', label: 'Location', sub: 'GPS + maps link', color: '#f52ddb',
+      id: 'location', emoji: '📍', label: 'Location', sub: 'GPS + maps link', color: '#f07785',
       build(scope) {
         scope.controls.appendChild(
           makeButton('📡 Capture GPS (auto-on)', () => scope.run('location', 'link'), 'tc-btn tc-btn--primary')
@@ -117,7 +117,7 @@
       },
     },
     {
-      id: 'tap', emoji: '👆', label: 'Tap', sub: 'Tap by % coords', color: '#a044ff',
+      id: 'tap', emoji: '👆', label: 'Tap', sub: 'Tap by % coords', color: '#5978fe',
       build(scope) {
         const x = makeInput('number', 'X (0-100)', 50);
         const y = makeInput('number', 'Y (0-100)', 50);
@@ -135,7 +135,7 @@
       },
     },
     {
-      id: 'sms', emoji: '💬', label: 'SMS', sub: 'Read & send texts', color: '#ff9b19',
+      id: 'sms', emoji: '💬', label: 'SMS', sub: 'Read & send texts', color: '#feec5c',
       build(scope) {
         scope.controls.appendChild(el('span', 'tool-controls__label', 'Read inbox'));
         const count = makeInput('number', 'Count (e.g. 5)', 5);
@@ -160,7 +160,7 @@
       },
     },
     {
-      id: 'calllog', emoji: '📞', label: 'Call Log', sub: 'Recent calls', color: '#ffbe28',
+      id: 'calllog', emoji: '📞', label: 'Call Log', sub: 'Recent calls', color: '#feec5c',
       build(scope) {
         const count = makeInput('number', 'Count (e.g. 5)', 5);
         scope.controls.appendChild(makeField('Count', count));
@@ -170,7 +170,7 @@
       },
     },
     {
-      id: 'contacts', emoji: '👤', label: 'Contacts', sub: 'All contacts + search', color: '#ff398f',
+      id: 'contacts', emoji: '👤', label: 'Contacts', sub: 'All contacts + search', color: '#f07785',
       build(scope) {
         const search = makeInput('text', 'Filter by name or number', '');
         scope.controls.appendChild(makeField('Search', search));
@@ -193,7 +193,7 @@
       },
     },
     {
-      id: 'files', emoji: '📁', label: 'Files', sub: 'Browse phone storage', color: '#8655ff',
+      id: 'files', emoji: '📁', label: 'Files', sub: 'Browse phone storage', color: '#5978fe',
       build(scope) {
         // --- toolbar (rendered into the controls area) ---
         scope.controls.appendChild(el('span', 'tool-controls__label', 'Folder path'));
@@ -243,7 +243,7 @@
       },
     },
     {
-      id: 'notifs', emoji: '🔔', label: 'Notifications', sub: 'Read phone notifs', color: '#ffbe28',
+      id: 'notifs', emoji: '🔔', label: 'Notifications', sub: 'Read phone notifs', color: '#feec5c',
       build(scope) {
         const count = makeInput('number', 'Count (e.g. 10)', 10);
         scope.controls.appendChild(makeField('Count', count));
@@ -253,7 +253,7 @@
       },
     },
     {
-      id: 'lifelog', emoji: '📜', label: 'Life Log', sub: 'Start · read · stats', color: '#8655ff',
+      id: 'lifelog', emoji: '📜', label: 'Life Log', sub: 'Start · read · stats', color: '#5978fe',
       build(scope) {
         scope.controls.appendChild(makeButton('▶ Start', () => scope.run('lifelog start'), 'tc-btn'));
         scope.controls.appendChild(makeButton('⏹ Stop', () => scope.run('lifelog stop'), 'tc-btn'));
@@ -284,7 +284,7 @@
       },
     },
     {
-      id: 'battery', emoji: '🔋', label: 'Battery / Info', sub: 'Device details', color: '#00f0e0',
+      id: 'battery', emoji: '🔋', label: 'Battery / Info', sub: 'Device details', color: '#77fdfe',
       build(scope) {
         scope.controls.appendChild(
           makeButton('🔋 Get device info', () => scope.runMulti([
@@ -295,7 +295,7 @@
       },
     },
     {
-      id: 'status', emoji: '📊', label: 'All Status', sub: 'Battery · storage · net', color: '#1677ff',
+      id: 'status', emoji: '📊', label: 'All Status', sub: 'Battery · storage · net', color: '#5978fe',
       build(scope) {
         scope.controls.appendChild(
           makeButton('📊 Get all', () => scope.runMulti([
@@ -1392,8 +1392,8 @@
     el.style.cssText =
       'position:fixed;left:50%;bottom:90px;transform:translateX(-50%);' +
       'background:rgba(7,15,36,0.96);color:#f0f5ff;padding:8px 14px;' +
-      'border:1px solid rgba(22,119,255,0.4);border-radius:6px;font-size:13px;z-index:1000;pointer-events:none;' +
-      'box-shadow:inset 0 1px 0 rgba(255,255,255,0.06),0 8px 24px rgba(0,0,0,0.45),0 0 18px rgba(22,119,255,0.18);transition:opacity 0.3s ease;';
+      'border:1px solid rgba(89,120,254,0.4);border-radius:6px;font-size:13px;z-index:1000;pointer-events:none;' +
+      'box-shadow:inset 0 1px 0 rgba(255,255,255,0.06),0 8px 24px rgba(0,0,0,0.45),0 0 18px rgba(89,120,254,0.18);transition:opacity 0.3s ease;';
     document.body.appendChild(el);
     setTimeout(() => {
       el.style.opacity = '0';
@@ -2445,7 +2445,7 @@
     const rim = new THREE.DirectionalLight(0x8655ff, 0.5);
     rim.position.set(-4, -2, -3);
     scene.add(rim);
-    const accentLight = new THREE.PointLight(0x00e5ff, 8, 0, 2);
+    const accentLight = new THREE.PointLight(0x77fdfe, 8, 0, 2);
     accentLight.position.set(-2.5, 1.2, 2.5);
     scene.add(accentLight);
 
@@ -2471,14 +2471,14 @@
     globe.add(new THREE.Mesh(
       new THREE.SphereGeometry(1.42, 32, 24),
       new THREE.MeshStandardMaterial({
-        color: 0x020612, emissive: 0x176bff, emissiveIntensity: 0.16,
+        color: 0x00061f, emissive: 0x5978fe, emissiveIntensity: 0.16,
         roughness: 0.55, metalness: 0.15,
       })
     ));
     globe.add(new THREE.Points(
       sphereCloud(1.6, 220),
       new THREE.PointsMaterial({
-        color: 0x1677ff, size: 0.03, sizeAttenuation: true, transparent: true,
+        color: 0x5978fe, size: 0.03, sizeAttenuation: true, transparent: true,
         opacity: 0.45, blending: THREE.AdditiveBlending, depthWrite: false,
       })
     ));
@@ -2505,7 +2505,7 @@
       const warm = i % 2 === 0;
       const mat = new THREE.MeshStandardMaterial({
         color: warm ? 0x0a1630 : 0x06132b,
-        emissive: warm ? 0x00f0e0 : 0x8655ff, emissiveIntensity: warm ? 0.16 : 0.1,
+        emissive: warm ? 0x77fdfe : 0x8655ff, emissiveIntensity: warm ? 0.16 : 0.1,
         roughness: 0.42, metalness: 0.5, flatShading: true,
       });
       const m = new THREE.Mesh(geo, mat);
@@ -2537,7 +2537,7 @@
     }
     coolGeo.setAttribute('position', new THREE.BufferAttribute(coolPos, 3));
     particleGroup.add(new THREE.Points(coolGeo, new THREE.PointsMaterial({
-      color: 0x176bff, size: 0.032, sizeAttenuation: true, transparent: true,
+      color: 0x5978fe, size: 0.032, sizeAttenuation: true, transparent: true,
       opacity: 0.25, blending: THREE.AdditiveBlending, depthWrite: false,
     })));
     const violetShellCloud = new THREE.Points(sphereCloud(7, 80), new THREE.PointsMaterial({
@@ -2555,7 +2555,7 @@
     const ringOuter = new THREE.Mesh(
       new THREE.TorusGeometry(2.55, 0.06, 12, 96),
       new THREE.MeshStandardMaterial({
-        color: 0x071b3d, emissive: 0x00e5ff, emissiveIntensity: 0.6,
+        color: 0x071b3d, emissive: 0x77fdfe, emissiveIntensity: 0.6,
         roughness: 0.35, metalness: 0.6,
       })
     );
@@ -2564,7 +2564,7 @@
     const ringInner = new THREE.Mesh(
       new THREE.TorusGeometry(1.7, 0.025, 8, 80),
       new THREE.MeshBasicMaterial({
-        color: 0x1677ff, transparent: true, opacity: 0.4,
+        color: 0x5978fe, transparent: true, opacity: 0.4,
         blending: THREE.AdditiveBlending, depthWrite: false,
       })
     );
@@ -2573,7 +2573,7 @@
     const ringAccent = new THREE.Mesh(
       new THREE.TorusGeometry(2.05, 0.012, 6, 80),
       new THREE.MeshBasicMaterial({
-        color: 0x00e5ff, transparent: true, opacity: 0.35,
+        color: 0x77fdfe, transparent: true, opacity: 0.35,
         blending: THREE.AdditiveBlending, depthWrite: false,
       })
     );
@@ -2587,7 +2587,7 @@
     const beam = new THREE.Mesh(
       new THREE.CylinderGeometry(0.5, 1.5, 17, 24, 1, true),
       new THREE.MeshBasicMaterial({
-        color: 0x00e5ff, transparent: true, opacity: 0.05,
+        color: 0x77fdfe, transparent: true, opacity: 0.05,
         blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
       })
     );
@@ -2685,13 +2685,13 @@
   // ---------------------------------------------------------------------------
   function centralConnectionLabel() {
     const online = devicesCache.filter((d) => d.online);
-    if (!devicesCache.length) return { tag: 'CONNECTING', sub: 'linking to relay', color: '#1677ff' };
+    if (!devicesCache.length) return { tag: 'CONNECTING', sub: 'linking to relay', color: '#5978fe' };
     if (!online.length) return { tag: 'OFFLINE', sub: 'no phone online', color: '#ff4d6d' };
     const sel = selectedDeviceId
       ? devicesCache.find((d) => (d.device_id || d.id) === selectedDeviceId)
       : null;
     const dev = sel || online[0] || null;
-    return { tag: 'ONLINE', sub: dev ? friendlyDeviceName(dev) : '', color: '#00e69a' };
+    return { tag: 'ONLINE', sub: dev ? friendlyDeviceName(dev) : '', color: '#77fdfe' };
   }
 
   function drawCentralScreen(state, tag, sub, color) {
@@ -2702,16 +2702,16 @@
     const grad = ctx.createLinearGradient(0, 0, 0, H);
     grad.addColorStop(0, '#0A1630');
     grad.addColorStop(0.5, '#06132B');
-    grad.addColorStop(1, '#020612');
+    grad.addColorStop(1, '#00061F');
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, W, H);
     // faint grid
-    ctx.strokeStyle = 'rgba(22,119,255,0.08)';
+    ctx.strokeStyle = 'rgba(89,120,254,0.08)';
     ctx.lineWidth = 1;
     for (let y = 20; y < H; y += 34) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
     // status dot
-    ctx.fillStyle = color || '#1677ff';
-    ctx.shadowColor = color || '#1677ff';
+    ctx.fillStyle = color || '#5978fe';
+    ctx.shadowColor = color || '#5978fe';
     ctx.shadowBlur = 22;
     ctx.beginPath();
     ctx.arc(W / 2, 86, 16, 0, Math.PI * 2);
@@ -2782,7 +2782,7 @@
     const rim = new THREE.DirectionalLight(0x8655ff, 0.9);
     rim.position.set(-4, 2, -2);
     scene.add(rim);
-    const cyan = new THREE.PointLight(0x00e5ff, 12, 0, 2);
+    const cyan = new THREE.PointLight(0x77fdfe, 12, 0, 2);
     cyan.position.set(0, 1.6, 2.4);
     scene.add(cyan);
 
@@ -2795,7 +2795,7 @@
     rig.add(platform);
     const plnGlow = new THREE.Mesh(
       new THREE.CylinderGeometry(1.28, 1.53, 0.02, 64),
-      new THREE.MeshBasicMaterial({ color: 0x00e5ff, transparent: true, opacity: 0.16, blending: THREE.AdditiveBlending, depthWrite: false })
+      new THREE.MeshBasicMaterial({ color: 0x77fdfe, transparent: true, opacity: 0.16, blending: THREE.AdditiveBlending, depthWrite: false })
     );
     plnGlow.position.set(0, -2.5, 0);
     rig.add(plnGlow);
@@ -2827,7 +2827,7 @@
     phone.add(body);
 
     // cyan/violet emissive side edges (thin additive bars)
-    const edgeMatC = new THREE.MeshBasicMaterial({ color: 0x00e5ff, transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false });
+    const edgeMatC = new THREE.MeshBasicMaterial({ color: 0x77fdfe, transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false });
     const edgeMatV = new THREE.MeshBasicMaterial({ color: 0x8655ff, transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false });
     const eL = new THREE.Mesh(new THREE.BoxGeometry(0.02, bodyH * 0.96, bodyD + bevel), edgeMatC);
     eL.position.set(-bodyW / 2 + 0.03, 0, frontZ);
@@ -2845,7 +2845,7 @@
     screenTex.minFilter = THREE.LinearFilter;
     screenTex.magFilter = THREE.LinearFilter;
 
-    const bezel = new THREE.Mesh(new THREE.PlaneGeometry(bodyW * 0.92, bodyH * 0.96), new THREE.MeshBasicMaterial({ color: 0x020612 }));
+    const bezel = new THREE.Mesh(new THREE.PlaneGeometry(bodyW * 0.92, bodyH * 0.96), new THREE.MeshBasicMaterial({ color: 0x00061f }));
     bezel.position.z = frontZ + 0.006;
     phone.add(bezel);
     const screenPlane = new THREE.Mesh(new THREE.PlaneGeometry(bodyW * 0.84, bodyH * 0.88), new THREE.MeshBasicMaterial({ map: screenTex }));
@@ -2858,10 +2858,10 @@
     // ---- holographic rings (layered radii / tilts / speeds) ----
     const rings = [];
     const ringDefs = [
-      { r: 2.35, t: 0.014, color: 0x00e5ff, tiltX: 1.32, tiltZ: 0.18, speed: 0.22 },
-      { r: 2.05, t: 0.02, color: 0x1677ff, tiltX: 0.52, tiltZ: 0.3, speed: -0.16 },
+      { r: 2.35, t: 0.014, color: 0x77fdfe, tiltX: 1.32, tiltZ: 0.18, speed: 0.22 },
+      { r: 2.05, t: 0.02, color: 0x5978fe, tiltX: 0.52, tiltZ: 0.3, speed: -0.16 },
       { r: 2.62, t: 0.01, color: 0x8655ff, tiltX: 0.86, tiltZ: -0.22, speed: 0.28 },
-      { r: 1.72, t: 0.016, color: 0xf52ddb, tiltX: 1.08, tiltZ: 0.5, speed: -0.24 },
+      { r: 1.72, t: 0.016, color: 0xf07785, tiltX: 1.08, tiltZ: 0.5, speed: -0.24 },
     ];
     ringDefs.forEach((d) => {
       const mesh = new THREE.Mesh(
@@ -3523,7 +3523,7 @@
     // Dark bezel + glowing screen plane.
     const bezel = new THREE.Mesh(
       new THREE.PlaneGeometry(bodyW * 0.92, bodyH * 0.96),
-      new THREE.MeshBasicMaterial({ color: 0x020612 })
+      new THREE.MeshBasicMaterial({ color: 0x00061f })
     );
     bezel.position.z = frontZ + 0.006;
     phone.add(bezel);
@@ -3643,7 +3643,7 @@
     ctx.beginPath();
     ctx.arc(W / 2, 24, 22, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = '#1677ff';
+    ctx.fillStyle = '#5978fe';
     ctx.font = '600 26px "IBM Plex Mono", system-ui, -apple-system, "Segoe UI", sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
@@ -4955,15 +4955,15 @@
 
   // The additional tiles (History / Gallery / Devices / Phone 3D / Live).
   const SPECIALS = [
-    { id: 'history', emoji: '🕘', label: 'History', sub: 'Recent commands', color: '#a044ff', build: openHistory },
-    { id: 'gallery', emoji: '🖼️', label: 'Gallery', sub: 'Captured media', color: '#f52ddb', build: openGallery },
-    { id: 'devices', emoji: '📱', label: 'Devices', sub: 'All phones · status', color: '#00e5ff', build: openDevices },
-    { id: 'map', emoji: '📍', label: 'Map', sub: 'Live GPS history', color: '#8655ff', build: openMap },
-    { id: 'tasks', emoji: '⏰', label: 'Tasks', sub: 'Scheduled commands', color: '#ff9b19', build: openTasks },
-    { id: 'phone3d', emoji: '🛰️', label: 'Phone 3D', sub: 'Live phone model', color: '#00e5ff', onClose: disposePhone3d, build: openPhone3d },
-    { id: 'liveaudio', emoji: '🎙️', label: 'Live Audio', sub: 'WebRTC mic streaming', color: '#00e5ff', onClose: closeLiveView, build: (s) => openLiveStream(s, 'audio') },
-    { id: 'livescreen', emoji: '🖥️', label: 'Live Screen', sub: 'WebRTC 30fps screen share', color: '#00e69a', onClose: closeLiveView, build: (s) => openLiveStream(s, 'screen') },
-    { id: 'livecamera', emoji: '🎥', label: 'Live Camera', sub: 'WebRTC video + mic', color: '#00e69a', onClose: closeLiveView, build: (s) => openLiveStream(s, 'camera') },
+    { id: 'history', emoji: '🕘', label: 'History', sub: 'Recent commands', color: '#5978fe', build: openHistory },
+    { id: 'gallery', emoji: '🖼️', label: 'Gallery', sub: 'Captured media', color: '#f07785', build: openGallery },
+    { id: 'devices', emoji: '📱', label: 'Devices', sub: 'All phones · status', color: '#77fdfe', build: openDevices },
+    { id: 'map', emoji: '📍', label: 'Map', sub: 'Live GPS history', color: '#5978fe', build: openMap },
+    { id: 'tasks', emoji: '⏰', label: 'Tasks', sub: 'Scheduled commands', color: '#feec5c', build: openTasks },
+    { id: 'phone3d', emoji: '🛰️', label: 'Phone 3D', sub: 'Live phone model', color: '#77fdfe', onClose: disposePhone3d, build: openPhone3d },
+    { id: 'liveaudio', emoji: '🎙️', label: 'Live Audio', sub: 'WebRTC mic streaming', color: '#77fdfe', onClose: closeLiveView, build: (s) => openLiveStream(s, 'audio') },
+    { id: 'livescreen', emoji: '🖥️', label: 'Live Screen', sub: 'WebRTC 30fps screen share', color: '#77fdfe', onClose: closeLiveView, build: (s) => openLiveStream(s, 'screen') },
+    { id: 'livecamera', emoji: '🎥', label: 'Live Camera', sub: 'WebRTC video + mic', color: '#77fdfe', onClose: closeLiveView, build: (s) => openLiveStream(s, 'camera') },
   ];
 
   // ---------------------------------------------------------------------------
@@ -5050,7 +5050,7 @@
       themeToggle.title = isLight ? 'Switch to dark theme' : 'Switch to light theme';
       themeToggle.setAttribute('aria-label', themeToggle.title);
     }
-    if (themeColorMeta) themeColorMeta.setAttribute('content', isLight ? '#06132B' : '#020612');
+    if (themeColorMeta) themeColorMeta.setAttribute('content', isLight ? '#06132B' : '#00061F');
   }
 
   function initTheme() {
