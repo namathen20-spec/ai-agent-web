@@ -329,18 +329,18 @@
   // must therefore actually be set as a Cloudflare secret AND the worker must be
   // (re)deployed with that secret for unlocks to succeed.
   //
-  // SECURITY note (deliberate trade-off): this value must persist in
-  // localStorage so it can back the `X-Web-Key` header on every fetch. That
-  // means any script running on this origin could in principle read it, which is
-  // exactly why the rest of this file never places untrusted (SMS / contacts /
-  // notifications / command results / chat) data into `innerHTML` — see
-  // `renderToolResult` (textContent-based) and `linkify` (every segment is HTML-
-  // escaped). It is stored in this one key only, never duplicated anywhere else.
-  // BYOK `providers[].apiKey` values live in localStorage (`saveProviders`) for
-  // the same reason: they must survive reloads, so the same XSS-hardening
-  // invariant is what keeps them from being exfiltrated.
+  // SECURITY note (deliberate trade-off): this value is stored in sessionStorage
+  // (not localStorage) so it is cleared when the tab closes and does NOT survive
+  // browser restarts, shrinking the window any injected script could read it. It
+  // still must persist across reloads within a tab to back the `X-Web-Key` header
+  // on every fetch — which is exactly why the rest of this file never places
+  // untrusted (SMS / contacts / notifications / command results / chat) data into
+  // `innerHTML` — see `renderToolResult` (textContent-based) and `linkify` (every
+  // segment is HTML-escaped). It is stored in this one key only, never duplicated.
+  // BYOK `providers[].apiKey` values still live in localStorage (`saveProviders`):
+  // they must survive full reloads/browser restarts to keep chat working.
   function agentWebKey() {
-    try { return localStorage.getItem('agentWebKey') || ''; } catch { return ''; }
+    try { return sessionStorage.getItem('agentWebKey') || ''; } catch { return ''; }
   }
 
   function loadProviders() {
@@ -3629,12 +3629,13 @@
   function loadThree() {
     if (window.THREE) return Promise.resolve(window.THREE);
     if (threePromise) return threePromise;
-    // Lazy, non-blocking load. CDN-first (three@0.160.0), falling back to the
-    // byte-identical self-hosted copy so the 3D views still work when the CDN
-    // is unreachable. The `window.THREE` global is shared by the hero + Phone 3D.
+    // Lazy, non-blocking load. Self-hosted copy is primary (three@0.160.0, pinned
+    // and served from our own origin so no third-party script is required),
+    // falling back to the byte-identical jsdelivr CDN only if the local copy is
+    // unreachable. The `window.THREE` global is shared by the hero + Phone 3D.
     const srcs = [
-      'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js',
       './three.min.js',
+      'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js',
     ];
     threePromise = new Promise((resolve, reject) => {
       let idx = 0;
@@ -3939,16 +3940,46 @@
   // STUN/ICE-negotiated peer route, so the Worker is never in the media path.
   // ---------------------------------------------------------------------------
   const SIGNAL_WS_BASE = 'wss://ai-agent-backend.ai-agent-backend.workers.dev/signal';
-  // The /signal endpoint now accepts the WEB KEY (localStorage['agentWebKey'],
+  // The /signal endpoint now accepts the WEB KEY (sessionStorage['agentWebKey'],
   // entered at the unlock gate) for role=browser. It must be read at CALL time —
   // the key isn't stored until the gate unlocks, long after this module loads.
   function signalKeyParam() {
     const k = agentWebKey ? agentWebKey() : '';
     return k ? '&key=' + encodeURIComponent(k) : '';
   }
+  // Transition-safe ticket fetch: exchange the long-lived web key for a short-lived
+  // signaling ticket (GET /api/signal_token) so the key never rides in the WebSocket
+  // URL. Returns '&ticket=…' (already URL-encoded) on success, or '' on any failure
+  // so the caller falls back to the legacy signalKeyParam() — which the worker STILL
+  // accepts — guaranteeing zero breakage during the transition.
+  async function signalTicketParam() {
+    const key = agentWebKey ? agentWebKey() : '';
+    if (!key) return '';
+    try {
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), 8000);
+      try {
+        const res = await fetch(BACKEND_BASE + '/api/signal_token', {
+          headers: { 'X-Web-Key': key },
+          signal: ctrl.signal,
+        });
+        if (!res.ok) return '';
+        const data = await res.json().catch(() => null);
+        if (!data || typeof data.token !== 'string' || !data.token) return '';
+        return '&ticket=' + encodeURIComponent(data.token);
+      } finally {
+        clearTimeout(t);
+      }
+    } catch (err) {
+      return '';
+    }
+  }
   const LIVE_STUN = 'stun:stun.l.google.com:19302';
-  // Public TURN relay (openrelay.metered.ca) so peers behind symmetric NAT can
-  // still connect when a direct host/STUN candidate can't be negotiated.
+  // PUBLIC, NON-SECRET demo TURN relay (free.expressturn.com). The username +
+  // credential below are intentionally public demo credentials for a free TURN
+  // service so peers behind symmetric NAT can still connect when a direct
+  // host/STUN candidate can't be negotiated. They are NOT a secret and NOT
+  // sensitive — client-side WebRTC requires the credentials in the browser.
   const LIVE_TURN = {
     urls: [
       'turn:free.expressturn.com:3478',
@@ -4596,7 +4627,11 @@
       // Screen share uses a distinct room (device_id + "-screen") so it never
       // collides with a simultaneous live-camera signal room.
       const roomId = mode === 'screen' ? (id + '-screen') : id;
-      const wsUrl = SIGNAL_WS_BASE + '?room=' + encodeURIComponent(roomId) + '&role=browser' + signalKeyParam();
+      // Prefer the short-lived signaling ticket so the long-lived web key never
+      // rides in the WebSocket URL; fall back to the legacy `?key=` param (still
+      // accepted by the worker) if the ticket couldn't be fetched.
+      const ticketParam = await signalTicketParam();
+      const wsUrl = SIGNAL_WS_BASE + '?room=' + encodeURIComponent(roomId) + '&role=browser' + (ticketParam || signalKeyParam());
       status.textContent = 'Connecting to ' + id + '…';
 
       let ws;
@@ -5254,7 +5289,7 @@
             res = await fetch(BACKEND_VERIFY_URL, { headers: { 'X-Web-Key': key }, signal: ctrl.signal });
           } finally { clearTimeout(t); }
         } catch (err) {
-          try { localStorage.removeItem('agentWebKey'); } catch { /* ignore */ }
+          try { sessionStorage.removeItem('agentWebKey'); } catch { /* ignore */ }
           failGate(err && err.name === 'AbortError'
             ? '⚠️ Backend is slow to respond — try again in a moment.'
             : '⚠️ Backend unreachable — could not verify your key.');
@@ -5262,7 +5297,7 @@
         }
 
         if (!res.ok) {
-          try { localStorage.removeItem('agentWebKey'); } catch { /* ignore */ }
+          try { sessionStorage.removeItem('agentWebKey'); } catch { /* ignore */ }
           if (res.status === 401 || res.status === 403) {
             failGate('❌ Invalid security key — the backend rejected it.');
           } else {
@@ -5273,7 +5308,7 @@
 
         // Backend recognized the key (or is permissive when AGENT_WEB_KEY is
         // unset) — persist it and unlock for this session.
-        try { localStorage.setItem('agentWebKey', key); } catch { /* ignore */ }
+        try { sessionStorage.setItem('agentWebKey', key); } catch { /* ignore */ }
         try { sessionStorage.setItem(GATE_KEY, '1'); } catch { /* ignore */ }
         hideGate();
       } finally {

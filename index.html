@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="theme-color" content="#030712" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' data: blob: https:; connect-src 'self' https://ai-agent-backend.ai-agent-backend.workers.dev wss://ai-agent-backend.ai-agent-backend.workers.dev https://gokul-agent-server.onrender.com https://api.telegram.org https://telegram.org; frame-src https://www.openstreetmap.org; object-src 'none'; base-uri 'self'; worker-src 'self' blob:" />
   <meta name="description" content="AI Agent — a 3D phone Control Center + BYOK AI chat PWA." />
   <title>AI Agent · Control Center</title>
 
@@ -15,16 +16,8 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="AI Agent" />
 
-  <script>
-    // Apply the saved theme before first paint to avoid a flash of the wrong theme.
-    (function () {
-      try {
-        if (localStorage.getItem('aiAgent.theme') === 'light') {
-          document.documentElement.setAttribute('data-theme', 'light');
-        }
-      } catch (e) {}
-    })();
-  </script>
+  <!-- Theme bootstrap (external so it passes CSP script-src 'self'; runs before first paint) -->
+  <script src="theme.js"></script>
 
   <!-- Type: Orbitron (display/headings) + Rajdhani (body) + Share Tech Mono (data) -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -265,8 +258,9 @@
               <input type="text" id="provModel" placeholder="gpt-4o-mini" required />
             </label>
             <p class="hint">
-              🔒 Your key is stored <strong>only</strong> in this browser's
-              <code>localStorage</code> and never hardcoded or logged.
+              🔒 Your key is stored locally in this browser and is sent to this
+              app's backend to proxy model requests on your behalf — it is never
+              hardcoded.
             </p>
             <button type="submit" class="btn btn--primary">Save provider</button>
             <button type="button" class="btn btn--ghost" id="removeProvider" hidden>Remove selected</button>
@@ -308,6 +302,6 @@
     </form>
   </aside>
 
-  <script src="app.js?v=61"></script>
+  <script src="app.js?v=62"></script>
 </body>
 </html>
