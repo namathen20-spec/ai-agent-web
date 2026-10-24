@@ -2479,19 +2479,38 @@
     if (spec) enterView(spec.label, spec.onClose, spec.build);
   }
 
+  // India Standard Time (IST) in 12-hour AM/PM — the single source for every
+  // clock/time readout on the page (phone lock screen, canvas, status bar).
+  function istTimeNow() {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Asia/Kolkata',
+      hour12: true,
+      weekday: 'short',
+      day: '2-digit',
+      month: 'short',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    }).formatToParts(new Date());
+    const g = (type) => {
+      const p = parts.find((x) => x.type === type);
+      return p ? p.value : '';
+    };
+    return {
+      hh: g('hour'), mm: g('minute'), ss: g('second'), ampm: g('dayPeriod'),
+      wd: g('weekday'), day: g('day'), mon: g('month'),
+    };
+  }
+
   let holoPhone = null; // live ref to the CSS phone's sub-elements + cleanup
 
   function updatePhoneClock() {
     if (!holoPhone) return;
-    const d = new Date();
-    const pad = (n) => String(n).padStart(2, '0');
-    const hh = pad(d.getHours()), mm = pad(d.getMinutes());
-    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    const time = hh + ':' + mm;
+    const t = istTimeNow();
+    const time = t.hh + ':' + t.mm + ' ' + t.ampm;
     holoPhone.clock.textContent = time;
     holoPhone.time.textContent = time;
-    holoPhone.date.textContent = days[d.getDay()] + ', ' + d.getDate() + ' ' + months[d.getMonth()];
+    holoPhone.date.textContent = t.wd + ', ' + t.day + ' ' + t.mon;
   }
 
   function updatePhoneStatus() {
@@ -3097,19 +3116,17 @@
       ctx.fillText(cap.length > 26 ? cap.slice(0, 25) + '…' : cap, W / 2, 72);
     }
 
-    const now = new Date();
-    const hh = String(now.getHours()).padStart(2, '0');
-    const mm = String(now.getMinutes()).padStart(2, '0');
+    const t = istTimeNow();
     ctx.fillStyle = '#ffffff';
     ctx.shadowColor = 'rgba(6, 182, 212, 0.5)';
     ctx.shadowBlur = 20;
     ctx.font = '700 88px "Share Tech Mono", ui-monospace, monospace';
-    ctx.fillText(hh + ':' + mm, W / 2, H * 0.5 - 8);
+    ctx.fillText(t.hh + ':' + t.mm, W / 2, H * 0.5 - 8);
     ctx.shadowBlur = 0;
 
     ctx.fillStyle = 'rgba(226, 232, 240, 0.85)';
     ctx.font = '500 20px "Rajdhani", system-ui, sans-serif';
-    ctx.fillText(now.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }), W / 2, H * 0.5 + 32);
+    ctx.fillText(t.wd + ', ' + t.mon + ' ' + t.day + ' · ' + t.ampm, W / 2, H * 0.5 + 32);
 
     const colors = ['#10b981', '#06b6d4', '#a855f7', '#f59e0b'];
     const iw = 38, gap = 14;
@@ -3379,7 +3396,7 @@
   function historyRow(h) {
     const row = el('div', 'history__row');
     const top = el('div', 'history__top');
-    top.appendChild(el('span', 'history__time', new Date(h.ts).toLocaleTimeString()));
+    top.appendChild(el('span', 'history__time', new Date(h.ts).toLocaleTimeString('en-US', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true })));
     top.appendChild(el('span', 'history__tool', h.tool || 'cmd'));
     row.appendChild(top);
     row.appendChild(el('code', 'history__cmd', h.command));
@@ -5310,10 +5327,9 @@
   function initStatusClock() {
     const c = document.getElementById('statusClock');
     if (!c) return;
-    const pad = (n) => String(n).padStart(2, '0');
     const tick = () => {
-      const d = new Date();
-      c.textContent = pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+      const t = istTimeNow();
+      c.textContent = t.hh + ':' + t.mm + ':' + t.ss + ' ' + t.ampm;
     };
     tick();
     setInterval(tick, 1000);
