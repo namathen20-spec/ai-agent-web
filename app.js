@@ -58,7 +58,7 @@
   // ---------------------------------------------------------------------------
   const TOOLS = [
     {
-      id: 'camera', emoji: '📷', label: 'Camera', sub: 'Back / front photo', color: '#4f8cff',
+      id: 'camera', emoji: '📷', label: 'Camera', sub: 'Back / front photo', color: '#00e5ff',
       build(scope) {
         scope.controls.appendChild(el('span', 'tool-controls__label', 'Lens'));
         let lens = 'back';
@@ -78,7 +78,7 @@
       },
     },
     {
-      id: 'screenshot', emoji: '📸', label: 'Screenshot', sub: 'Snap the screen', color: '#38bdf8',
+      id: 'screenshot', emoji: '📸', label: 'Screenshot', sub: 'Snap the screen', color: '#00e5ff',
       build(scope) {
         scope.controls.appendChild(
           makeButton('📸 Capture', () => scope.run('screenshot_link', 'image'), 'tc-btn tc-btn--primary')
@@ -86,7 +86,7 @@
       },
     },
     {
-      id: 'audio', emoji: '🎤', label: 'Audio', sub: 'Record mic · WAV', color: '#22d3ee',
+      id: 'audio', emoji: '🎤', label: 'Audio', sub: 'Record mic · WAV', color: '#14f1d9',
       build(scope) {
         scope.controls.appendChild(el('span', 'tool-controls__label', 'Duration (seconds)'));
         const seg = makeSeg(['10', '30', '60'], 0);
@@ -97,7 +97,7 @@
       },
     },
     {
-      id: 'screenrecord', emoji: '🎥', label: 'Screen Record', sub: 'Record the screen', color: '#fb7185',
+      id: 'screenrecord', emoji: '🎥', label: 'Screen Record', sub: 'Record the screen', color: '#ff4d6d',
       build(scope) {
         scope.controls.appendChild(el('span', 'tool-controls__label', 'Duration (seconds)'));
         const seg = makeSeg(['10', '30', '60'], 0);
@@ -108,7 +108,7 @@
       },
     },
     {
-      id: 'location', emoji: '📍', label: 'Location', sub: 'GPS + maps link', color: '#d946ef',
+      id: 'location', emoji: '📍', label: 'Location', sub: 'GPS + maps link', color: '#f52ddb',
       build(scope) {
         scope.controls.appendChild(
           makeButton('📡 Capture GPS (auto-on)', () => scope.run('location', 'link'), 'tc-btn tc-btn--primary')
@@ -117,7 +117,7 @@
       },
     },
     {
-      id: 'tap', emoji: '👆', label: 'Tap', sub: 'Tap by % coords', color: '#8b5cf6',
+      id: 'tap', emoji: '👆', label: 'Tap', sub: 'Tap by % coords', color: '#8655ff',
       build(scope) {
         const x = makeInput('number', 'X (0-100)', 50);
         const y = makeInput('number', 'Y (0-100)', 50);
@@ -135,7 +135,7 @@
       },
     },
     {
-      id: 'sms', emoji: '💬', label: 'SMS', sub: 'Read & send texts', color: '#f59e0b',
+      id: 'sms', emoji: '💬', label: 'SMS', sub: 'Read & send texts', color: '#ff9b19',
       build(scope) {
         scope.controls.appendChild(el('span', 'tool-controls__label', 'Read inbox'));
         const count = makeInput('number', 'Count (e.g. 5)', 5);
@@ -160,7 +160,7 @@
       },
     },
     {
-      id: 'calllog', emoji: '📞', label: 'Call Log', sub: 'Recent calls', color: '#fb923c',
+      id: 'calllog', emoji: '📞', label: 'Call Log', sub: 'Recent calls', color: '#ffb01f',
       build(scope) {
         const count = makeInput('number', 'Count (e.g. 5)', 5);
         scope.controls.appendChild(makeField('Count', count));
@@ -170,7 +170,7 @@
       },
     },
     {
-      id: 'contacts', emoji: '👤', label: 'Contacts', sub: 'All contacts + search', color: '#ec4899',
+      id: 'contacts', emoji: '👤', label: 'Contacts', sub: 'All contacts + search', color: '#ff398f',
       build(scope) {
         const search = makeInput('text', 'Filter by name or number', '');
         scope.controls.appendChild(makeField('Search', search));
@@ -193,7 +193,7 @@
       },
     },
     {
-      id: 'files', emoji: '📁', label: 'Files', sub: 'Browse phone storage', color: '#8b5cf6',
+      id: 'files', emoji: '📁', label: 'Files', sub: 'Browse phone storage', color: '#8655ff',
       build(scope) {
         // --- toolbar (rendered into the controls area) ---
         scope.controls.appendChild(el('span', 'tool-controls__label', 'Folder path'));
@@ -243,7 +243,7 @@
       },
     },
     {
-      id: 'notifs', emoji: '🔔', label: 'Notifications', sub: 'Read phone notifs', color: '#fbbf24',
+      id: 'notifs', emoji: '🔔', label: 'Notifications', sub: 'Read phone notifs', color: '#ffd400',
       build(scope) {
         const count = makeInput('number', 'Count (e.g. 10)', 10);
         scope.controls.appendChild(makeField('Count', count));
@@ -253,7 +253,7 @@
       },
     },
     {
-      id: 'lifelog', emoji: '📜', label: 'Life Log', sub: 'Start · read · stats', color: '#6366f1',
+      id: 'lifelog', emoji: '📜', label: 'Life Log', sub: 'Start · read · stats', color: '#6b7bff',
       build(scope) {
         scope.controls.appendChild(makeButton('▶ Start', () => scope.run('lifelog start'), 'tc-btn'));
         scope.controls.appendChild(makeButton('⏹ Stop', () => scope.run('lifelog stop'), 'tc-btn'));
@@ -284,7 +284,7 @@
       },
     },
     {
-      id: 'battery', emoji: '🔋', label: 'Battery / Info', sub: 'Device details', color: '#14b8a6',
+      id: 'battery', emoji: '🔋', label: 'Battery / Info', sub: 'Device details', color: '#14f1d9',
       build(scope) {
         scope.controls.appendChild(
           makeButton('🔋 Get device info', () => scope.runMulti([
@@ -295,7 +295,7 @@
       },
     },
     {
-      id: 'status', emoji: '📊', label: 'All Status', sub: 'Battery · storage · net', color: '#4f8cff',
+      id: 'status', emoji: '📊', label: 'All Status', sub: 'Battery · storage · net', color: '#1677ff',
       build(scope) {
         scope.controls.appendChild(
           makeButton('📊 Get all', () => scope.runMulti([
@@ -2536,6 +2536,52 @@
     particleGroup.add(violetShellCloud);
     rig.add(particleGroup);
 
+    // Overhead "reactor ring" — a large horizontal emissive hoop (command-room
+    // ceiling light) that floats high behind the globe and slowly gyres. Kept
+    // subtle so the UI text stays readable above it.
+    const reactor = new THREE.Group();
+    const ringOuter = new THREE.Mesh(
+      new THREE.TorusGeometry(2.55, 0.06, 12, 96),
+      new THREE.MeshStandardMaterial({
+        color: 0x071d48, emissive: 0x00e5ff, emissiveIntensity: 0.6,
+        roughness: 0.35, metalness: 0.6,
+      })
+    );
+    ringOuter.rotation.x = Math.PI / 2;
+    reactor.add(ringOuter);
+    const ringInner = new THREE.Mesh(
+      new THREE.TorusGeometry(1.7, 0.025, 8, 80),
+      new THREE.MeshBasicMaterial({
+        color: 0x1677ff, transparent: true, opacity: 0.4,
+        blending: THREE.AdditiveBlending, depthWrite: false,
+      })
+    );
+    ringInner.rotation.x = Math.PI / 2;
+    reactor.add(ringInner);
+    const ringAccent = new THREE.Mesh(
+      new THREE.TorusGeometry(2.05, 0.012, 6, 80),
+      new THREE.MeshBasicMaterial({
+        color: 0x00e5ff, transparent: true, opacity: 0.35,
+        blending: THREE.AdditiveBlending, depthWrite: false,
+      })
+    );
+    ringAccent.rotation.x = Math.PI / 2;
+    reactor.add(ringAccent);
+    reactor.position.set(0, 3.7, -2.6);
+    reactor.rotation.z = 0.12;
+    rig.add(reactor);
+
+    // Soft cyan light beam falling straight down the center of the scene.
+    const beam = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.5, 1.5, 17, 24, 1, true),
+      new THREE.MeshBasicMaterial({
+        color: 0x00e5ff, transparent: true, opacity: 0.05,
+        blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
+      })
+    );
+    beam.position.set(0, -4, -2.6);
+    rig.add(beam);
+
     // Parallax state + sources.
     const target = { x: 0, y: 0, scroll: 0 };
     const cur = { x: 0, y: 0, scroll: 0 };
@@ -2609,9 +2655,318 @@
       particleGroup.position.x = cur.x * 0.4;
       particleGroup.position.y = -cur.y * 0.25;
 
+      // Reactor ring: slow gyre + breathing beam.
+      reactor.rotation.y += dt * 0.16;
+      beam.material.opacity = 0.045 + Math.sin(travel * 1.1) * 0.015;
+
       renderer.render(scene, camera);
     }
     requestAnimationFrame(loop);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Central holographic phone — a SEPARATE Three.js scene from the "Phone 3D"
+  // tile. Floats a larger metallic phone above a circular platform, wrapped in
+  // layered holographic rings, behind the whole UI. The on-screen readout is
+  // real connection state (online / offline / connecting) driven by the live
+  // device cache, never a fake preview.
+  // ---------------------------------------------------------------------------
+  function centralConnectionLabel() {
+    const online = devicesCache.filter((d) => d.online);
+    if (!devicesCache.length) return { tag: 'CONNECTING', sub: 'linking to relay', color: '#1677ff' };
+    if (!online.length) return { tag: 'OFFLINE', sub: 'no phone online', color: '#ff4d6d' };
+    const sel = selectedDeviceId
+      ? devicesCache.find((d) => (d.device_id || d.id) === selectedDeviceId)
+      : null;
+    const dev = sel || online[0] || null;
+    return { tag: 'ONLINE', sub: dev ? friendlyDeviceName(dev) : '', color: '#00e69a' };
+  }
+
+  function drawCentralScreen(state, tag, sub, color) {
+    const ctx = state.screenCtx;
+    if (!ctx) return;
+    const W = state.screenCanvas.width, H = state.screenCanvas.height;
+    ctx.clearRect(0, 0, W, H);
+    const grad = ctx.createLinearGradient(0, 0, 0, H);
+    grad.addColorStop(0, '#0b1c42');
+    grad.addColorStop(0.5, '#05091c');
+    grad.addColorStop(1, '#02040f');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W, H);
+    // faint grid
+    ctx.strokeStyle = 'rgba(22,119,255,0.08)';
+    ctx.lineWidth = 1;
+    for (let y = 20; y < H; y += 34) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
+    // status dot
+    ctx.fillStyle = color || '#1677ff';
+    ctx.shadowColor = color || '#1677ff';
+    ctx.shadowBlur = 22;
+    ctx.beginPath();
+    ctx.arc(W / 2, 86, 16, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    // tag
+    ctx.fillStyle = '#eaf2ff';
+    ctx.font = '700 44px "IBM Plex Mono", ui-monospace, monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(String(tag || '—'), W / 2, 150);
+    // sub
+    ctx.fillStyle = 'rgba(169,185,215,0.85)';
+    ctx.font = '500 20px "IBM Plex Mono", ui-monospace, monospace';
+    let subTxt = String(sub || '');
+    if (subTxt.length > 22) subTxt = subTxt.slice(0, 21) + '…';
+    ctx.fillText(subTxt, W / 2, 204);
+    // footer
+    ctx.fillStyle = 'rgba(169,185,215,0.5)';
+    ctx.font = '500 16px "IBM Plex Mono", ui-monospace, monospace';
+    ctx.fillText('AI AGENT · CONTROL CENTER', W / 2, H - 42);
+    if (state.screenTex) state.screenTex.needsUpdate = true;
+  }
+
+  function initCentralPhone() {
+    if (prefersReducedMotion()) return;
+    if (!(window.matchMedia && window.matchMedia('(pointer: fine)').matches)) return;
+    if (window.matchMedia && window.matchMedia('(max-width: 760px)').matches) return;
+    const host = document.getElementById('central3d');
+    if (!host) return;
+    let webgl = false;
+    try {
+      const t = document.createElement('canvas');
+      webgl = !!(window.WebGLRenderingContext && (t.getContext('webgl') || t.getContext('experimental-webgl')));
+    } catch (err) { webgl = false; }
+    if (!webgl) return;
+    loadThree().then((THREE) => {
+      try { initCentralScene(THREE, host); }
+      catch (err) { /* decorative only */ }
+    }).catch(() => { /* keep CSS-only fallback */ });
+  }
+
+  function initCentralScene(THREE, host) {
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.setSize(w, h, false);
+    renderer.setClearColor(0x000000, 0);
+    const canvas = renderer.domElement;
+    canvas.setAttribute('aria-hidden', 'true');
+    host.appendChild(canvas);
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(38, w / h, 0.1, 100);
+    camera.position.set(0, 1.3, 8.6);
+    camera.lookAt(0, 0.3, 0);
+
+    // Parent rig for mouse parallax.
+    const rig = new THREE.Group();
+    scene.add(rig);
+
+    scene.add(new THREE.AmbientLight(0x1c2c5c, 1.6));
+    const key = new THREE.DirectionalLight(0xffffff, 1.6);
+    key.position.set(3, 5, 5);
+    scene.add(key);
+    const rim = new THREE.DirectionalLight(0x8655ff, 0.9);
+    rim.position.set(-4, 2, -2);
+    scene.add(rim);
+    const cyan = new THREE.PointLight(0x00e5ff, 12, 0, 2);
+    cyan.position.set(0, 1.6, 2.4);
+    scene.add(cyan);
+
+    // ---- floating platform (metallic disc) ----
+    const platform = new THREE.Mesh(
+      new THREE.CylinderGeometry(1.25, 1.5, 0.07, 64),
+      new THREE.MeshStandardMaterial({ color: 0x0a1836, metalness: 0.85, roughness: 0.3, emissive: 0x071d48, emissiveIntensity: 0.3 })
+    );
+    platform.position.set(0, -2.55, 0);
+    rig.add(platform);
+    const plnGlow = new THREE.Mesh(
+      new THREE.CylinderGeometry(1.28, 1.53, 0.02, 64),
+      new THREE.MeshBasicMaterial({ color: 0x00e5ff, transparent: true, opacity: 0.16, blending: THREE.AdditiveBlending, depthWrite: false })
+    );
+    plnGlow.position.set(0, -2.5, 0);
+    rig.add(plnGlow);
+
+    // ---- the phone ----
+    const phone = new THREE.Group();
+    const bodyW = 1.9, bodyH = 3.9, bodyR = 0.26, bodyD = 0.2, bevel = 0.04;
+    const shape = new THREE.Shape();
+    {
+      const x = -bodyW / 2, y = -bodyH / 2, w2 = bodyW, h2 = bodyH, r = bodyR;
+      shape.moveTo(x + r, y);
+      shape.lineTo(x + w2 - r, y);
+      shape.quadraticCurveTo(x + w2, y, x + w2, y + r);
+      shape.lineTo(x + w2, y + h2 - r);
+      shape.quadraticCurveTo(x + w2, y + h2, x + w2 - r, y + h2);
+      shape.lineTo(x + r, y + h2);
+      shape.quadraticCurveTo(x, y + h2, x, y + h2 - r);
+      shape.lineTo(x, y + r);
+      shape.quadraticCurveTo(x, y, x + r, y);
+    }
+    const bodyGeo = new THREE.ExtrudeGeometry(shape, {
+      depth: bodyD, bevelEnabled: true, bevelThickness: bevel, bevelSize: bevel, bevelSegments: 3, curveSegments: 14,
+    });
+    bodyGeo.computeBoundingBox();
+    const frontZ = (bodyGeo.boundingBox && bodyGeo.boundingBox.max) ? bodyGeo.boundingBox.max.z : (bodyD / 2 + bevel);
+    const body = new THREE.Mesh(bodyGeo, new THREE.MeshStandardMaterial({
+      color: 0x141a38, metalness: 0.78, roughness: 0.32, emissive: 0x071d48, emissiveIntensity: 0.4,
+    }));
+    phone.add(body);
+
+    // cyan/violet emissive side edges (thin additive bars)
+    const edgeMatC = new THREE.MeshBasicMaterial({ color: 0x00e5ff, transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false });
+    const edgeMatV = new THREE.MeshBasicMaterial({ color: 0x8655ff, transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false });
+    const eL = new THREE.Mesh(new THREE.BoxGeometry(0.02, bodyH * 0.96, bodyD + bevel), edgeMatC);
+    eL.position.set(-bodyW / 2 + 0.03, 0, frontZ);
+    phone.add(eL);
+    const eR = new THREE.Mesh(new THREE.BoxGeometry(0.02, bodyH * 0.96, bodyD + bevel), edgeMatV);
+    eR.position.set(bodyW / 2 - 0.03, 0, frontZ);
+    phone.add(eR);
+
+    // screen
+    const screenCanvas = document.createElement('canvas');
+    screenCanvas.width = 256;
+    screenCanvas.height = 512;
+    const screenCtx = screenCanvas.getContext('2d');
+    const screenTex = new THREE.CanvasTexture(screenCanvas);
+    screenTex.minFilter = THREE.LinearFilter;
+    screenTex.magFilter = THREE.LinearFilter;
+
+    const bezel = new THREE.Mesh(new THREE.PlaneGeometry(bodyW * 0.92, bodyH * 0.96), new THREE.MeshBasicMaterial({ color: 0x05070f }));
+    bezel.position.z = frontZ + 0.006;
+    phone.add(bezel);
+    const screenPlane = new THREE.Mesh(new THREE.PlaneGeometry(bodyW * 0.84, bodyH * 0.88), new THREE.MeshBasicMaterial({ map: screenTex }));
+    screenPlane.position.z = frontZ + 0.012;
+    phone.add(screenPlane);
+
+    phone.position.set(0, 0.5, 0);
+    rig.add(phone);
+
+    // ---- holographic rings (layered radii / tilts / speeds) ----
+    const rings = [];
+    const ringDefs = [
+      { r: 2.35, t: 0.014, color: 0x00e5ff, tiltX: 1.32, tiltZ: 0.18, speed: 0.22 },
+      { r: 2.05, t: 0.02, color: 0x1677ff, tiltX: 0.52, tiltZ: 0.3, speed: -0.16 },
+      { r: 2.62, t: 0.01, color: 0x8655ff, tiltX: 0.86, tiltZ: -0.22, speed: 0.28 },
+      { r: 1.72, t: 0.016, color: 0xf52ddb, tiltX: 1.08, tiltZ: 0.5, speed: -0.24 },
+    ];
+    ringDefs.forEach((d) => {
+      const mesh = new THREE.Mesh(
+        new THREE.TorusGeometry(d.r, d.t, 8, 96),
+        new THREE.MeshBasicMaterial({ color: d.color, transparent: true, opacity: 0.38, blending: THREE.AdditiveBlending, depthWrite: false })
+      );
+      mesh.rotation.set(d.tiltX, 0, d.tiltZ);
+      mesh.userData.speed = d.speed;
+      mesh.userData.baseTiltX = d.tiltX;
+      mesh.userData.baseTiltZ = d.tiltZ;
+      rig.add(mesh);
+      rings.push(mesh);
+    });
+
+    const state = { screenCanvas, screenCtx, screenTex };
+
+    function drawConnection() {
+      const s = centralConnectionLabel();
+      drawCentralScreen(state, s.tag, s.sub, s.color);
+    }
+    drawConnection();
+    // Refresh the real connection readout; also nudge a device fetch if the cache
+    // is still empty so we don't sit on "CONNECTING" forever.
+    const refreshConnection = async () => {
+      if (!devicesCache.length) {
+        try { const devs = await fetchDevices(); populateDeviceSelect(devs); } catch (err) { /* ignore */ }
+      }
+      drawConnection();
+    };
+    refreshConnection();
+    const connTimer = setInterval(refreshConnection, 8000);
+
+    // ---- parallax + float + spin ----
+    const target = { x: 0, y: 0 };
+    window.addEventListener('pointermove', (e) => {
+      target.x = (e.clientX / window.innerWidth) * 2 - 1;
+      target.y = (e.clientY / window.innerHeight) * 2 - 1;
+    }, { passive: true });
+
+    function onResize() {
+      const rw = window.innerWidth;
+      const rh = window.innerHeight;
+      renderer.setSize(rw, rh, false);
+      camera.aspect = rw / rh;
+      camera.updateProjectionMatrix();
+    }
+    window.addEventListener('resize', onResize, { passive: true });
+
+    let last = performance.now();
+    function animate(now) {
+      requestAnimationFrame(animate);
+      const t = now || performance.now();
+      const dt = Math.min(0.05, (t - last) / 1000) || 0.016;
+      last = t;
+      const travel = t * 0.001;
+
+      rig.rotation.y += (target.x * 0.28 - rig.rotation.y) * 0.045;
+      rig.rotation.x += (-target.y * 0.16 - rig.rotation.x) * 0.045;
+
+      phone.position.y = 0.5 + Math.sin(travel * 0.5) * 0.14;
+      phone.rotation.y += dt * 0.1;
+
+      for (let i = 0; i < rings.length; i++) {
+        const r = rings[i];
+        r.rotation.y += r.userData.speed * dt;
+      }
+
+      renderer.render(scene, camera);
+    }
+    requestAnimationFrame(animate);
+
+    // Keep a live reference so a future teardown could dispose it; the scene is
+    // page-lifetime, so we simply clear the interval if the host is ever removed.
+    host._centralPhone = { renderer, scene, camera, connTimer };
+  }
+
+  // --- left nav (Home / Devices / Files / Logs / Settings) ---------------------
+  function navSetActive(btn) {
+    if (!btn) return;
+    const nav = document.getElementById('ccNav');
+    if (!nav) return;
+    nav.querySelectorAll('.cc-nav__item').forEach((b) => b.classList.toggle('is-active', b === btn));
+  }
+
+  function flashTile(tile) {
+    if (!tile) return;
+    tile.classList.remove('tile--flash');
+    void tile.offsetWidth;
+    tile.classList.add('tile--flash');
+    setTimeout(() => tile.classList.remove('tile--flash'), 1500);
+  }
+
+  function initNav() {
+    const nav = document.getElementById('ccNav');
+    if (!nav) return;
+    nav.addEventListener('click', (e) => {
+      const btn = e.target && e.target.closest ? e.target.closest('.cc-nav__item') : null;
+      if (!btn) return;
+      const kind = btn.getAttribute('data-nav');
+      navSetActive(btn);
+      if (kind === 'home') {
+        closeTool();
+        if (ccMain) ccMain.scrollTo({ top: 0, behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
+      } else if (kind === 'settings') {
+        setChatOpen(true);
+        const pane = document.getElementById('settingsPane');
+        if (pane) { pane.open = true; }
+      } else if (kind === 'tile') {
+        closeTool();
+        const i = parseInt(btn.getAttribute('data-tile'), 10);
+        const tile = tileGrid && tileGrid.children && tileGrid.children[i];
+        if (tile) {
+          tile.scrollIntoView({ block: 'center', behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
+          flashTile(tile);
+        }
+      }
+    });
   }
 
   // Reveal-on-scroll for tiles: fade + translate up ONCE (unobserve after first
@@ -4588,14 +4943,14 @@
   // The additional tiles (History / Gallery / Devices / Phone 3D / Live).
   const SPECIALS = [
     { id: 'history', emoji: '🕘', label: 'History', sub: 'Recent commands', color: '#8b5cf6', build: openHistory },
-    { id: 'gallery', emoji: '🖼️', label: 'Gallery', sub: 'Captured media', color: '#ec4899', build: openGallery },
-    { id: 'devices', emoji: '📱', label: 'Devices', sub: 'All phones · status', color: '#38bdf8', build: openDevices },
-    { id: 'map', emoji: '📍', label: 'Map', sub: 'Live GPS history', color: '#d946ef', build: openMap },
-    { id: 'tasks', emoji: '⏰', label: 'Tasks', sub: 'Scheduled commands', color: '#f59e0b', build: openTasks },
-    { id: 'phone3d', emoji: '🛰️', label: 'Phone 3D', sub: 'Live phone model', color: '#22d3ee', onClose: disposePhone3d, build: openPhone3d },
-    { id: 'liveaudio', emoji: '🎙️', label: 'Live Audio', sub: 'WebRTC mic streaming', color: '#22d3ee', onClose: closeLiveView, build: (s) => openLiveStream(s, 'audio') },
-    { id: 'livescreen', emoji: '🖥️', label: 'Live Screen', sub: 'WebRTC 30fps screen share', color: '#10b981', onClose: closeLiveView, build: (s) => openLiveStream(s, 'screen') },
-    { id: 'livecamera', emoji: '🎥', label: 'Live Camera', sub: 'WebRTC video + mic', color: '#4ade80', onClose: closeLiveView, build: (s) => openLiveStream(s, 'camera') },
+    { id: 'gallery', emoji: '🖼️', label: 'Gallery', sub: 'Captured media', color: '#f52ddb', build: openGallery },
+    { id: 'devices', emoji: '📱', label: 'Devices', sub: 'All phones · status', color: '#00e5ff', build: openDevices },
+    { id: 'map', emoji: '📍', label: 'Map', sub: 'Live GPS history', color: '#8655ff', build: openMap },
+    { id: 'tasks', emoji: '⏰', label: 'Tasks', sub: 'Scheduled commands', color: '#ffb01f', build: openTasks },
+    { id: 'phone3d', emoji: '🛰️', label: 'Phone 3D', sub: 'Live phone model', color: '#00e5ff', onClose: disposePhone3d, build: openPhone3d },
+    { id: 'liveaudio', emoji: '🎙️', label: 'Live Audio', sub: 'WebRTC mic streaming', color: '#00e5ff', onClose: closeLiveView, build: (s) => openLiveStream(s, 'audio') },
+    { id: 'livescreen', emoji: '🖥️', label: 'Live Screen', sub: 'WebRTC 30fps screen share', color: '#00e69a', onClose: closeLiveView, build: (s) => openLiveStream(s, 'screen') },
+    { id: 'livecamera', emoji: '🎥', label: 'Live Camera', sub: 'WebRTC video + mic', color: '#00e69a', onClose: closeLiveView, build: (s) => openLiveStream(s, 'camera') },
   ];
 
   // ---------------------------------------------------------------------------
@@ -4868,12 +5223,13 @@
   renderGrid();
   initTileReveal();
   initSound();
+  initNav();
 
   // Defer the 3D hero until after first paint (`load`) so the UI renders
   // instantly; initHero3d() then lazily loads Three.js and builds the scene on
   // desktop only (detected internally: pointer:fine, no reduced-motion, WebGL).
-  if (document.readyState === 'complete') initHero3d();
-  else window.addEventListener('load', initHero3d, { once: true });
+  if (document.readyState === 'complete') { initHero3d(); initCentralPhone(); }
+  else window.addEventListener('load', () => { initHero3d(); initCentralPhone(); }, { once: true });
 
   refreshMcpStatus();
   renderMcpTools();

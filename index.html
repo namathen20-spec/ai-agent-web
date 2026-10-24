@@ -34,7 +34,7 @@
     rel="stylesheet"
   />
 
-  <link rel="stylesheet" href="style.css?v=25" />
+  <link rel="stylesheet" href="style.css?v=26" />
 </head>
 <body>
   <!-- ===================== Security-key gate (lock screen) ===================== -->
@@ -70,7 +70,11 @@
     <div class="orb orb--3"></div>
     <div class="bg-glow" aria-hidden="true"></div>
     <div class="hero-3d" id="hero3d" aria-hidden="true"></div>
+    <div class="bg-floor" aria-hidden="true"></div>
   </div>
+
+  <!-- ===================== Central holographic phone (real Three.js, behind the UI) ===================== -->
+  <div class="central3d" id="central3d" aria-hidden="true"></div>
 
   <!-- ===================== Tactical HUD overlays (CRT + targeting grid) ===================== -->
   <div class="hud-grid" aria-hidden="true"></div>
@@ -89,8 +93,8 @@
           </svg>
         </span>
         <div class="brand__text">
-          <h1>Control Center</h1>
-          <p class="brand__sub">AI Agent · phone remote</p>
+          <h1>AI Agent — Control Center</h1>
+          <p class="brand__sub">AI AGENT · PHONE REMOTE</p>
         </div>
       </div>
       <div class="cc-header__controls">
@@ -117,7 +121,40 @@
     </header>
 
     <!-- Main area -->
-    <main class="cc-main">
+    <div class="cc-body">
+      <nav class="cc-nav" id="ccNav" aria-label="Primary sections">
+        <button class="cc-nav__item is-active" type="button" data-nav="home" title="Home">
+          <span class="cc-nav__ico" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 10.5 12 3.5l8.5 7"/><path d="M6 9.5V20h12V9.5"/><path d="M10 20v-5h4v5"/></svg>
+          </span>
+          <span class="cc-nav__label">Home</span>
+        </button>
+        <button class="cc-nav__item" type="button" data-nav="tile" data-tile="16" title="Devices">
+          <span class="cc-nav__ico" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="3" width="10" height="18" rx="2.2"/><path d="M10.5 18h3"/></svg>
+          </span>
+          <span class="cc-nav__label">Devices</span>
+        </button>
+        <button class="cc-nav__item" type="button" data-nav="tile" data-tile="9" title="Files">
+          <span class="cc-nav__ico" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/></svg>
+          </span>
+          <span class="cc-nav__label">Files</span>
+        </button>
+        <button class="cc-nav__item" type="button" data-nav="tile" data-tile="11" title="Logs">
+          <span class="cc-nav__ico" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 6h12M8.5 12h12M8.5 18h12"/><circle cx="4" cy="6" r="0.8"/><circle cx="4" cy="12" r="0.8"/><circle cx="4" cy="18" r="0.8"/></svg>
+          </span>
+          <span class="cc-nav__label">Logs</span>
+        </button>
+        <button class="cc-nav__item" type="button" data-nav="settings" title="Settings">
+          <span class="cc-nav__ico" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.8v2.4M12 18.8v2.4M4.9 4.9l1.7 1.7M17.4 17.4l1.7 1.7M2.8 12h2.4M18.8 12h2.4M4.9 19.1l1.7-1.7M17.4 6.6l1.7-1.7"/></svg>
+          </span>
+          <span class="cc-nav__label">Settings</span>
+        </button>
+      </nav>
+      <main class="cc-main">
       <!-- Grid of tiles -->
       <section class="grid-view" id="gridView">
         <div class="grid-view__head">
@@ -140,7 +177,8 @@
           <div class="tool-result" id="toolResult"></div>
         </div>
       </section>
-    </main>
+      </main>
+    </div>
 
     <!-- Bottom status bar -->
     <footer class="cc-statusbar">
@@ -248,6 +286,6 @@
     </form>
   </aside>
 
-  <script src="app.js?v=52"></script>
+  <script src="app.js?v=53"></script>
 </body>
 </html>
