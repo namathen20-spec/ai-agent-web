@@ -1941,8 +1941,9 @@
     return printable / sample.length > 0.92;
   }
 
-  function fmMime(bytes, name) {
-    const n = String(name == null ? '' : name).toLowerCase();
+  // Map a filename/path extension to a mime type (or null if unknown).
+  function fmMimeByExt(nameOrPath) {
+    const n = String(nameOrPath == null ? '' : nameOrPath).toLowerCase();
     const ext = n.includes('.') ? n.slice(n.lastIndexOf('.') + 1) : '';
     const byExt = {
       jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif',
@@ -1956,7 +1957,12 @@
       xls: 'application/vnd.ms-excel', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       ppt: 'application/vnd.ms-powerpoint', pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
     };
-    if (byExt[ext]) return byExt[ext];
+    return byExt[ext] || null;
+  }
+
+  function fmMime(bytes, name) {
+    const byExt = fmMimeByExt(name);
+    if (byExt) return byExt;
     // Magic-byte sniff as a fallback.
     if (bytes[0] === 0xff && bytes[1] === 0xd8) return 'image/jpeg';
     if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) return 'image/png';
@@ -2019,9 +2025,66 @@
 
     const text = String(raw == null ? '' : raw).trim();
 
-    // Relay returned a media URL (camera-style) rather than base64 — delegate.
+    // Relay returned a media URL (camera-style) rather than base64 — build a
+    // download link plus a type-appropriate inline preview (never a bare <img>
+    // for PDF/zip/audio/video). The download link is always shown.
     if (/^MEDIA_LINK:/i.test(text)) {
-      renderToolResult(container, text, 'auto');
+      const url = safeMediaUrl(text.replace(/^MEDIA_LINK:\s*/i, '').trim());
+      const mime = fmMimeByExt(name);
+
+      const dlWrap = el('div', 'fm__dl');
+      const dl = el('a', 'result-dl', '⬇ Download');
+      dl.href = url;
+      dl.target = '_blank';
+      dl.rel = 'noopener';
+      dl.download = name || 'download';
+      dlWrap.appendChild(dl);
+      container.appendChild(dlWrap);
+
+      if (!url) return;
+
+      if (mime && mime.startsWith('image/')) {
+        const img = el('img', 'fm__img');
+        img.alt = name;
+        img.src = url;
+        container.appendChild(img);
+      } else if (mime && mime.startsWith('audio/')) {
+        const au = el('audio', 'fm__media');
+        au.controls = true;
+        au.src = url;
+        container.appendChild(au);
+      } else if (mime && mime.startsWith('video/')) {
+        const vid = el('video', 'fm__media');
+        vid.controls = true;
+        vid.playsInline = true;
+        vid.src = url;
+        container.appendChild(vid);
+      } else if (mime === 'application/pdf') {
+        const embed = el('embed', 'fm__pdf');
+        embed.src = url;
+        embed.type = 'application/pdf';
+        container.appendChild(embed);
+        const openLink = el('a', 'result-dl', '↗ Open in new tab');
+        openLink.href = url;
+        openLink.target = '_blank';
+        openLink.rel = 'noopener';
+        container.appendChild(openLink);
+      } else if (mime && (mime.startsWith('text/') || mime === 'application/json')) {
+        // Fetch text inline; on any failure simply fall back to the download link.
+        fetchWithTimeout(url)
+          .then((resp) => {
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
+            return resp.text();
+          })
+          .then((content) => {
+            const MAX_TXT = 256 * 1024;
+            if (content.length > MAX_TXT) content = content.slice(0, MAX_TXT) + '\n…[truncated]';
+            const pre = el('pre', 'result-pre fm__pre');
+            pre.textContent = content || '(empty file)';
+            container.appendChild(pre);
+          })
+          .catch(() => { /* fall back to download link only */ });
+      }
       return;
     }
 
