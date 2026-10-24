@@ -1064,6 +1064,7 @@
       provider: '🤖 Provider error',
       rateLimited: '⏳ Rate limited',
       backend: '🔌 Backend error',
+      target: '📱 Select a device',
       unknown: '⚠️ Error',
     };
     const kind = (err && err.kind) || 'unknown';
@@ -1612,6 +1613,16 @@
   // `result` field when present (backward-compatible with the old contract).
   const COMMAND_TIMEOUT_MS = 130000;
   const COMMAND_POLL_MS = 2000;
+  const RESULT_TOO_LARGE_RE = /result\s*too\s*large/i;
+
+  // A 413 (or the "result too large" error string) means the phone produced a
+  // result bigger than the relay's cap — surfacing the real reason beats a
+  // generic 130s timeout. Returns that message, otherwise ''.
+  function resultTooLargeDetail(res, data) {
+    const msg = (data && (data.error || data.message)) || '';
+    if (res && res.status === 413) return msg || 'result too large (max 5MB)';
+    return RESULT_TOO_LARGE_RE.test(msg) ? msg : '';
+  }
 
   // `deviceId` is an optional per-call override for multi-device control; when
   // omitted it falls back to `selectedDeviceId` (the header device selector).
@@ -1620,7 +1631,12 @@
   async function postCommand(command, deviceId, opts) {
     let targetDevice = deviceId || selectedDeviceId;
     if (!targetDevice) {
-      try { targetDevice = await resolveOnlineTargetId(); } catch (err) { targetDevice = ''; }
+      try {
+        targetDevice = await resolveOnlineTargetId();
+      } catch (err) {
+        if (err && err.kind === 'target') throw err; // multiple phones — surface "select a device"
+        targetDevice = '';
+      }
     }
     if (!targetDevice) {
       // No phone is online — do NOT POST with an empty target. The relay would
@@ -1658,6 +1674,8 @@
 
       try { data = await res.json(); } catch (e) { data = null; }
       if (!res.ok) {
+        const tooLarge = resultTooLargeDetail(res, data);
+        if (tooLarge) throw errWithKind('provider', tooLarge);
         errorDetail = (data && (data.error || data.message || data.result)) || ('HTTP ' + res.status);
         if (res.status === 401 || res.status === 403) {
           errorDetail = 'Invalid security key';
@@ -1682,8 +1700,13 @@
               signal: controller.signal,
             });
             try { pres = await pollRes.json(); } catch (e) { pres = null; }
+            if (!pollRes.ok) {
+              const tooLarge = resultTooLargeDetail(pollRes, pres);
+              if (tooLarge) throw errWithKind('provider', tooLarge);
+            }
           } catch (err) {
             if (err && err.name === 'AbortError') throw err;
+            if (err && err.kind) throw err; // definitive failure (e.g. result too large)
             continue; // transient network error — retry next tick
           }
           if (pres && pres.ok && typeof pres.result !== 'undefined') {
@@ -1691,6 +1714,12 @@
             return data;
           }
           // { ok:false, pending:true } → keep polling until the timeout fires.
+          // But a response that is NOT pending AND carries no result is a
+          // definitive "no result" — the phone dequeued without ever posting, so
+          // sleeping to the 130s timeout only wastes time. Fail fast instead.
+          if (!pres || !pres.pending) {
+            throw errWithKind('unknown', 'No result returned for the command.');
+          }
         }
       }
       return data;
@@ -2535,21 +2564,30 @@
     return m ? m[1] + '%' : compact(text, 12);
   }
 
-  // Resolve the device id to actually send commands to: the selected device if
-  // it's online, otherwise the first online device. Returns '' when no phone is
-  // online (callers then skip the relay calls entirely rather than queueing
-  // commands for an offline device).
+  // Resolve the device id to actually send commands to. Order of preference:
+  //   1. the selected device (if it's online),
+  //   2. the single online device, when exactly one is online,
+  //   3. otherwise throw — with multiple online devices and none selected, we
+  //      must NOT guess (auto-picking the first routed commands to a random
+  //      second phone). Callers surface "select a device".
+  // Returns '' (rather than throwing) only when no phone is online, so the
+  // status/3D pollers keep their existing "offline" path.
   async function resolveOnlineTargetId() {
     let devices = devicesCache;
     if (!devices || !devices.length) {
       try { devices = await fetchDevices(); populateDeviceSelect(devices); } catch (err) { devices = devicesCache || []; }
     }
+    const online = devices.filter((d) => d.online);
     const selected = selectedDeviceId
-      ? devices.find((d) => ((d.device_id || d.id) === selectedDeviceId) && d.online)
+      ? online.find((d) => (d.device_id || d.id) === selectedDeviceId)
       : null;
-    const firstOnline = devices.find((d) => d.online);
-    const d = selected || firstOnline;
-    return d ? (d.device_id || d.id || '') : '';
+    if (selected) return selected.device_id || selected.id || '';
+    if (online.length === 1) return online[0].device_id || online[0].id || '';
+    if (online.length > 1) {
+      const names = online.map((d) => friendlyDeviceName(d)).join(', ');
+      throw errWithKind('target', 'Multiple phones online (' + names + ') — select a device.');
+    }
+    return '';
   }
 
   // Bottom status bar: battery / storage / network quick readout.
@@ -2557,7 +2595,12 @@
     const bEl = document.getElementById('statusBattery');
     const sEl = document.getElementById('statusStorage');
     const nEl = document.getElementById('statusNetwork');
-    const id = await resolveOnlineTargetId();
+    let id;
+    try {
+      id = await resolveOnlineTargetId();
+    } catch (err) {
+      id = ''; // multiple phones online & none selected — leave the readouts as dashes
+    }
     if (!id) {
       // No phone is online — skip the relay calls (they would just queue up).
       if (bEl) bEl.textContent = 'BAT —';
@@ -2625,9 +2668,30 @@
   function fetchWithTimeout(url, options, timeoutMs) {
     const controller = new AbortController();
     const t = setTimeout(() => controller.abort(), timeoutMs || FETCH_TIMEOUT_MS);
-    const opts = Object.assign({}, options || {}, { signal: controller.signal });
+    // Honour a caller-supplied signal (e.g. an outer AbortController) instead of
+    // silently replacing it — external aborts must not be misread as timeouts.
+    const callerSignal = options && options.signal;
+    let signal;
+    if (callerSignal) {
+      // Combine the caller's signal with our timeout signal. AbortSignal.any is
+      // preferred; fall back to a piped controller so older browsers don't break.
+      signal = AbortSignal.any
+        ? AbortSignal.any([callerSignal, controller.signal])
+        : (function () {
+            const out = new AbortController();
+            controller.signal.addEventListener('abort', () => out.abort());
+            callerSignal.addEventListener('abort', () => out.abort());
+            return out.signal;
+          })();
+    } else {
+      signal = controller.signal;
+    }
+    const opts = Object.assign({}, options || {}, { signal });
     return fetch(url, opts).catch((err) => {
       if (err && err.name === 'AbortError') {
+        // External aborts aren't timeouts; only flag the timeout when our own
+        // timer fired (the caller signal stayed live).
+        if (callerSignal && callerSignal.aborted) throw err;
         throw new Error('Backend unreachable — request timed out.');
       }
       throw err;
@@ -3088,7 +3152,12 @@
     // Live screen text: battery + deviceinfo, refreshed at most every ~5s.
     const refresh = async () => {
       if (phone3d !== state) return;
-      const id = await resolveOnlineTargetId();
+      let id;
+      try {
+        id = await resolveOnlineTargetId();
+      } catch (err) {
+        id = ''; // multiple phones online & none selected — show em dash until chosen
+      }
       if (phone3d !== state) return;
       if (!id) {
         drawScreenTexture(state, '—', '—');
@@ -3180,8 +3249,13 @@
   // STUN/ICE-negotiated peer route, so the Worker is never in the media path.
   // ---------------------------------------------------------------------------
   const SIGNAL_WS_BASE = 'wss://ai-agent-backend.ai-agent-backend.workers.dev/signal';
-  // Relay auth for the /signal WebSocket (matches the relay API key).
-  const SIGNAL_KEY = '&key=' + encodeURIComponent('Y7I13VPjo7X32XzektRatuYXD6ROvvwdvJdeT3Gf8roX');
+  // The /signal endpoint now accepts the WEB KEY (localStorage['agentWebKey'],
+  // entered at the unlock gate) for role=browser. It must be read at CALL time —
+  // the key isn't stored until the gate unlocks, long after this module loads.
+  function signalKeyParam() {
+    const k = agentWebKey ? agentWebKey() : '';
+    return k ? '&key=' + encodeURIComponent(k) : '';
+  }
   const LIVE_STUN = 'stun:stun.l.google.com:19302';
   // Public TURN relay (openrelay.metered.ca) so peers behind symmetric NAT can
   // still connect when a direct host/STUN candidate can't be negotiated.
@@ -3819,7 +3893,7 @@
       // Screen share uses a distinct room (device_id + "-screen") so it never
       // collides with a simultaneous live-camera signal room.
       const roomId = mode === 'screen' ? (id + '-screen') : id;
-      const wsUrl = SIGNAL_WS_BASE + '?room=' + encodeURIComponent(roomId) + '&role=browser' + SIGNAL_KEY;
+      const wsUrl = SIGNAL_WS_BASE + '?room=' + encodeURIComponent(roomId) + '&role=browser' + signalKeyParam();
       status.textContent = 'Connecting to ' + id + '…';
 
       let ws;
@@ -4600,33 +4674,32 @@
       if (gateError) gateError.classList.remove('is-visible');
       gateChecking = true;
       try {
-        // Persist the entered security key (it drives the X-Web-Key header), then
-        // verify it against the backend. There is NO client-side comparison or
-        // hardcoded key: the app unlocks only when the backend accepts the key.
-        try { localStorage.setItem('agentWebKey', key); } catch { /* ignore */ }
-
+        // Verify the key against the backend FIRST — there is NO client-side
+        // comparison or hardcoded key. The key is only persisted (driving the
+        // X-Web-Key header) once the backend confirms it's valid, and is cleared
+        // on ANY failure (401/403/non-ok/network error) so a bad key can't linger.
         let res;
         try {
           res = await fetch(BACKEND_DEVICES_URL, { headers: { 'X-Web-Key': key } });
         } catch (err) {
-          // Backend unreachable — cannot verify the key, so do not unlock.
+          try { localStorage.removeItem('agentWebKey'); } catch { /* ignore */ }
           failGate('⚠️ Backend unreachable — could not verify your key.');
           return;
         }
 
-        if (res.status === 401 || res.status === 403) {
-          // Backend rejected the key — stay locked and don't linger a bad key.
-          try { localStorage.removeItem('agentWebKey'); } catch { /* ignore */ }
-          failGate('❌ Invalid security key — the backend rejected it.');
-          return;
-        }
         if (!res.ok) {
-          failGate('⚠️ Backend error (HTTP ' + res.status + ')');
+          try { localStorage.removeItem('agentWebKey'); } catch { /* ignore */ }
+          if (res.status === 401 || res.status === 403) {
+            failGate('❌ Invalid security key — the backend rejected it.');
+          } else {
+            failGate('⚠️ Backend error (HTTP ' + res.status + ')');
+          }
           return;
         }
 
         // Backend recognized the key (or is permissive when AGENT_WEB_KEY is
-        // unset) — unlock for this session only.
+        // unset) — persist it and unlock for this session.
+        try { localStorage.setItem('agentWebKey', key); } catch { /* ignore */ }
         try { sessionStorage.setItem(GATE_KEY, '1'); } catch { /* ignore */ }
         hideGate();
       } finally {
