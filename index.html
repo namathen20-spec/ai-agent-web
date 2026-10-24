@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <meta name="theme-color" content="#0a0a14" />
+  <meta name="theme-color" content="#020612" />
   <meta name="description" content="AI Agent — a 3D phone Control Center + BYOK AI chat PWA." />
   <title>AI Agent · Control Center</title>
 
@@ -34,7 +34,7 @@
     rel="stylesheet"
   />
 
-  <link rel="stylesheet" href="style.css?v=26" />
+  <link rel="stylesheet" href="style.css?v=28" />
 </head>
 <body>
   <!-- ===================== Security-key gate (lock screen) ===================== -->
@@ -162,7 +162,11 @@
           <p class="grid-view__hint">Live control over the connected phone</p>
           <span class="grid-view__status" aria-hidden="true">Operational</span>
         </div>
-        <div class="grid" id="tileGrid" aria-live="polite"></div>
+        <div class="grid" id="tileGrid" aria-live="polite">
+          <div class="grid-col grid-col--left" id="gridLeft"></div>
+          <div class="grid-center" id="gridCenter" aria-hidden="true"></div>
+          <div class="grid-col grid-col--right" id="gridRight"></div>
+        </div>
       </section>
 
       <!-- Single tool view (replaces the grid while open) -->
@@ -286,6 +290,6 @@
     </form>
   </aside>
 
-  <script src="app.js?v=53"></script>
+  <script src="app.js?v=55"></script>
 </body>
 </html>
