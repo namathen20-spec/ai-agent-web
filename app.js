@@ -3940,18 +3940,11 @@
   // STUN/ICE-negotiated peer route, so the Worker is never in the media path.
   // ---------------------------------------------------------------------------
   const SIGNAL_WS_BASE = 'wss://ai-agent-backend.ai-agent-backend.workers.dev/signal';
-  // The /signal endpoint now accepts the WEB KEY (sessionStorage['agentWebKey'],
-  // entered at the unlock gate) for role=browser. It must be read at CALL time —
-  // the key isn't stored until the gate unlocks, long after this module loads.
-  function signalKeyParam() {
-    const k = agentWebKey ? agentWebKey() : '';
-    return k ? '&key=' + encodeURIComponent(k) : '';
-  }
-  // Transition-safe ticket fetch: exchange the long-lived web key for a short-lived
-  // signaling ticket (GET /api/signal_token) so the key never rides in the WebSocket
-  // URL. Returns '&ticket=…' (already URL-encoded) on success, or '' on any failure
-  // so the caller falls back to the legacy signalKeyParam() — which the worker STILL
-  // accepts — guaranteeing zero breakage during the transition.
+  // Signaling auth: the browser authenticates with a short-lived ticket (never the
+  // long-lived web key in the URL). The web key is read at CALL time via agentWebKey().
+  // Fetch a short-lived signaling ticket (GET /api/signal_token) so the long-lived
+  // web key never rides in the WebSocket URL. Returns '&ticket=…' (URL-encoded) on
+  // success, or '' on failure — the caller fails cleanly (no `?key=` fallback).
   async function signalTicketParam() {
     const key = agentWebKey ? agentWebKey() : '';
     if (!key) return '';
@@ -4627,11 +4620,15 @@
       // Screen share uses a distinct room (device_id + "-screen") so it never
       // collides with a simultaneous live-camera signal room.
       const roomId = mode === 'screen' ? (id + '-screen') : id;
-      // Prefer the short-lived signaling ticket so the long-lived web key never
-      // rides in the WebSocket URL; fall back to the legacy `?key=` param (still
-      // accepted by the worker) if the ticket couldn't be fetched.
+      // The long-lived web key NEVER rides in the WebSocket URL; authenticate with
+      // the short-lived ticket only. Fail cleanly (no `?key=` fallback) if absent.
       const ticketParam = await signalTicketParam();
-      const wsUrl = SIGNAL_WS_BASE + '?room=' + encodeURIComponent(roomId) + '&role=browser' + (ticketParam || signalKeyParam());
+      if (!ticketParam) {
+        status.textContent = '⚠️ Could not obtain a signaling token — check connection and retry.';
+        liveCleanup();
+        return;
+      }
+      const wsUrl = SIGNAL_WS_BASE + '?room=' + encodeURIComponent(roomId) + '&role=browser' + ticketParam;
       status.textContent = 'Connecting to ' + id + '…';
 
       let ws;
