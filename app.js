@@ -4006,6 +4006,8 @@
   let liveControlsCleanup = null;
   // Tear-down for the holo-parallax rAF loop (set on open, cleared on close).
   let liveHoloCleanup = null;
+  // Tear-down for the remote-touch gesture listeners (set on open, cleared on close).
+  let liveTouchCleanup = null;
   // Start-lock so a double-tap on Start can't orphan a half-open WebRTC session.
   let liveBusy = false;
 
@@ -4055,6 +4057,10 @@
     if (liveControlsCleanup) {
       try { liveControlsCleanup(); } catch (err) { /* ignore */ }
       liveControlsCleanup = null;
+    }
+    if (liveTouchCleanup) {
+      try { liveTouchCleanup(); } catch (err) { /* ignore */ }
+      liveTouchCleanup = null;
     }
   }
 
@@ -4206,6 +4212,166 @@
     };
   }
 
+  // Remote touch: map taps/swipes/scrolls on the live <video> to relay gestures
+  // (`tap_percent <X> <Y>`, `swipe_percent <x1> <y1> <x2> <y2> <dur>`). A "👆 Touch"
+  // toggle in the floating control bar arms/disarms the listeners — default ON for
+  // screen mirroring (drive the phone with your finger), OFF for the camera so a
+  // stray tap doesn't fire. Pointer events unify mouse/touch/pen; while armed we set
+  // `touch-action:none` on the video so native scroll/zoom never fights the gesture.
+  function buildRemoteTouch(video, mode) {
+    let enabled = (mode === 'screen');
+    let gesture = null;      // { id, x0, y0, lastX, lastY, t0 } — x/y are 0..100 %
+    let lastSent = 0;        // throttle: skip a new touch-down within 120ms of a send
+    let dot = null;          // transient feedback dot at the touch point
+    let dotTimer = 0;
+
+    const toggleBtn = makeButton('👆 Touch', () => setTouch(!enabled), 'live-ctl live-ctl--touch');
+    toggleBtn.style.width = 'auto';
+    toggleBtn.style.height = '40px';
+    toggleBtn.style.padding = '0 14px';
+    toggleBtn.style.borderRadius = '999px';
+    toggleBtn.style.fontSize = '13px';
+    toggleBtn.style.fontWeight = '700';
+    toggleBtn.title = 'Remote touch (tap / swipe the screen)';
+
+    function paint() {
+      if (enabled) {
+        toggleBtn.style.borderColor = 'rgba(59, 130, 246, 0.6)';
+        toggleBtn.style.background = 'rgba(59, 130, 246, 0.18)';
+        toggleBtn.style.color = 'var(--accent)';
+      } else {
+        toggleBtn.style.borderColor = '';
+        toggleBtn.style.background = '';
+        toggleBtn.style.color = '';
+      }
+      toggleBtn.setAttribute('aria-pressed', enabled ? 'true' : 'false');
+      toggleBtn.setAttribute('aria-label', 'Remote touch: ' + (enabled ? 'on' : 'off'));
+    }
+
+    // Pointer position as a 0..100 % coordinate over the video's bounding box.
+    function pt(e) {
+      const r = video.getBoundingClientRect();
+      if (!r.width || !r.height) return null;
+      return {
+        x: clamp(((e.clientX - r.left) / r.width) * 100, 0, 100),
+        y: clamp(((e.clientY - r.top) / r.height) * 100, 0, 100),
+      };
+    }
+
+    // Fire-and-forget relay gesture, targeted at the live session's device
+    // (falls back to the header selector); suppressed from history logging.
+    function send(command) {
+      lastSent = Date.now();
+      try {
+        const id = (liveStream && liveStream.deviceId) || selectedDeviceId;
+        postCommand(command, id, { log: false }).catch(() => { /* ignore */ });
+      } catch (err) { /* ignore */ }
+    }
+
+    // Transient dot at the touch point (fixed-position = exact viewport point,
+    // unaffected by the card's 3D tilt). Reduced-motion skips the grow/fade.
+    function flashDot(clientX, clientY) {
+      if (!dot) {
+        dot = el('span', 'live__touch-dot');
+        dot.style.position = 'fixed';
+        dot.style.zIndex = '2147483647';
+        dot.style.pointerEvents = 'none';
+        dot.style.width = '20px';
+        dot.style.height = '20px';
+        dot.style.marginLeft = '-10px';
+        dot.style.marginTop = '-10px';
+        dot.style.borderRadius = '50%';
+        dot.style.border = '1px solid rgba(255, 255, 255, 0.7)';
+        dot.style.background = 'radial-gradient(circle, rgba(255,255,255,0.95) 0%, rgba(59,130,246,0.85) 40%, rgba(168,85,247,0) 72%)';
+        dot.style.boxShadow = '0 0 10px rgba(59, 130, 246, 0.85)';
+        document.body.appendChild(dot);
+      }
+      dot.style.left = clientX + 'px';
+      dot.style.top = clientY + 'px';
+      dot.style.transition = 'none';
+      dot.style.opacity = '1';
+      dot.style.transform = 'scale(1)';
+      if (!prefersReducedMotion()) {
+        void dot.offsetWidth; // reflow so the fade-out transition animates
+        dot.style.transition = 'opacity 0.26s ease, transform 0.26s ease';
+        dot.style.opacity = '0';
+        dot.style.transform = 'scale(1.9)';
+      }
+      clearTimeout(dotTimer);
+      dotTimer = setTimeout(() => { if (dot) dot.style.opacity = '0'; }, 300);
+    }
+
+    function onDown(e) {
+      if (!enabled) return;
+      const p = pt(e);
+      if (!p) return;
+      if (Date.now() - lastSent < 120) return; // throttle the relay
+      e.preventDefault();
+      gesture = { id: e.pointerId, x0: p.x, y0: p.y, lastX: p.x, lastY: p.y, t0: Date.now() };
+    }
+
+    function onMove(e) {
+      if (!enabled || !gesture || e.pointerId !== gesture.id) return;
+      const p = pt(e);
+      if (!p) return;
+      e.preventDefault();
+      gesture.lastX = p.x;
+      gesture.lastY = p.y;
+    }
+
+    function onUp(e) {
+      if (!enabled || !gesture || e.pointerId !== gesture.id) return;
+      e.preventDefault();
+      const g = gesture;
+      gesture = null;
+      const dx = g.lastX - g.x0;
+      const dy = g.lastY - g.y0;
+      const dist = Math.hypot(dx, dy);   // displacement in % points
+      const dur = Date.now() - g.t0;
+      if (dist < 4 && dur < 350) {
+        send('tap_percent ' + g.lastX.toFixed(1) + ' ' + g.lastY.toFixed(1));
+      } else {
+        const swipeDur = dur > 500 ? 350 : 250; // slower drags mirror as a slower swipe
+        send('swipe_percent ' + g.x0.toFixed(1) + ' ' + g.y0.toFixed(1) + ' ' +
+          g.lastX.toFixed(1) + ' ' + g.lastY.toFixed(1) + ' ' + swipeDur);
+      }
+      flashDot(e.clientX, e.clientY);
+    }
+
+    function onCancel(e) {
+      if (gesture && e.pointerId === gesture.id) gesture = null;
+    }
+
+    function setTouch(on) {
+      enabled = on;
+      if (!enabled) gesture = null;
+      video.style.touchAction = enabled ? 'none' : '';
+      video.style.cursor = enabled ? 'crosshair' : '';
+      paint();
+    }
+
+    video.addEventListener('pointerdown', onDown);
+    video.addEventListener('pointermove', onMove);
+    video.addEventListener('pointerup', onUp);
+    video.addEventListener('pointercancel', onCancel);
+    setTouch(enabled);
+
+    function cleanup() {
+      video.removeEventListener('pointerdown', onDown);
+      video.removeEventListener('pointermove', onMove);
+      video.removeEventListener('pointerup', onUp);
+      video.removeEventListener('pointercancel', onCancel);
+      video.style.touchAction = '';
+      video.style.cursor = '';
+      clearTimeout(dotTimer);
+      if (dot && dot.parentNode) { try { dot.parentNode.removeChild(dot); } catch (err) { /* ignore */ } }
+      dot = null;
+      gesture = null;
+    }
+
+    return { toggleBtn, cleanup };
+  }
+
   // Build the Live Camera / Live Audio tile view.
   function openLiveStream(scope, mode) {
     const isVideo = mode === 'camera' || mode === 'screen';
@@ -4279,6 +4445,14 @@
     const ctl = buildLiveAudioControls(video, fullscreenEl);
     liveControlsCleanup = ctl.cleanup;
     const controls = ctl.bar;
+
+    // Remote touch (screen + camera): tap/swipe/scroll the live <video> to send
+    // the matching relay gesture. Cleared by closeLiveView (same path as audio).
+    if (isVideo) {
+      const touch = buildRemoteTouch(video, mode);
+      controls.appendChild(touch.toggleBtn);
+      liveTouchCleanup = touch.cleanup;
+    }
 
     box.appendChild(btnRow);
     box.appendChild(status);
