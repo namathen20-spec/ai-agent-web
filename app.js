@@ -860,9 +860,10 @@
       mediaEl = document.createElement('img');
       mediaEl.loading = 'lazy';
       mediaEl.alt = 'Media';
-      mediaEl.src = url;
       // Telegram serves files as application/octet-stream; re-fetch as a Blob
       // with a sniffed mime so the <img> renders inline instead of downloading.
+      // No eager `src` here — renderImageViaBlob assigns the (sniffed) object
+      // URL, and a raw octet-stream src would just double-load before overwrite.
       renderImageViaBlob(mediaEl, url);
     }
     mediaEl.className = 'msg__media-el';
@@ -1242,12 +1243,6 @@
       .filter((m) => m && (m.role === 'user' || m.role === 'assistant') &&
         typeof m.content === 'string' && m.content.trim())
       .map(({ role, content }) => ({ role, content }));
-
-    if (!history.length) {
-      input.value = text;
-      input.focus();
-      return;
-    }
 
     setComposerBusy(true);
 
@@ -1646,18 +1641,6 @@
     return Math.max(min, Math.min(max, n));
   }
 
-  // UTF-8 → base64 (safe for non-Latin1 files PUT to the phone).
-  function utf8ToBase64(str) {
-    try {
-      const bytes = new TextEncoder().encode(String(str));
-      let bin = '';
-      bytes.forEach((b) => { bin += String.fromCharCode(b); });
-      return btoa(bin);
-    } catch (e) {
-      try { return btoa(String(str)); } catch (e2) { return ''; }
-    }
-  }
-
   // ---------------------------------------------------------------------------
   // Control Center — command execution + result rendering
   // ---------------------------------------------------------------------------
@@ -1746,7 +1729,10 @@
           errorDetail = 'Invalid security key';
           throw errWithKind('auth', errorDetail);
         }
-        throw errWithKind(classifyError(res.status, errorDetail), errorDetail);
+        const errKind = classifyError(res.status, errorDetail);
+        const cmdErr = errWithKind(errKind, errorDetail);
+        if (errKind === 'rateLimited' && data && data.retry_after) cmdErr.retryAfter = data.retry_after;
+        throw cmdErr;
       }
 
       // Backward-compatible: the response already carries the final result.
@@ -1925,7 +1911,7 @@
     } catch (err) {
       out.innerHTML = '';
       if (err && err.kind === 'rateLimited') {
-        appendRateCountdown(out);
+        appendRateCountdown(out, err.retryAfter);
       } else {
         const msg = formatError(err);
         out.appendChild(el('pre', 'result-pre result-error', '⚠️ ' + msg));
@@ -2306,7 +2292,7 @@
     } catch (err) {
       out.innerHTML = '';
       if (err && err.kind === 'rateLimited') {
-        appendRateCountdown(out);
+        appendRateCountdown(out, err.retryAfter);
       } else {
         out.appendChild(el('pre', 'result-pre result-error', '⚠️ ' + formatError(err)));
       }
@@ -2464,7 +2450,6 @@
   // RIGHT block 13 cards (2 columns small / 3 columns desktop, #23 spans full).
   // Keyed by tool/special id (1:1 with the reference 01…23 numbers).
   const LEFT_TILE_IDS = ['camera', 'screenshot', 'tap', 'sms', 'notifs', 'lifelog', 'gallery', 'devices', 'liveaudio', 'livescreen'];
-  const RIGHT_TILE_IDS = ['audio', 'screenrecord', 'location', 'calllog', 'contacts', 'files', 'battery', 'status', 'history', 'map', 'tasks', 'phone3d', 'livecamera'];
 
   function renderGrid() {
     gridLeft.innerHTML = '';
@@ -4653,6 +4638,9 @@
       // The long-lived web key NEVER rides in the WebSocket URL; authenticate with
       // the short-lived ticket only. Fail cleanly (no `?key=` fallback) if absent.
       const ticketParam = await signalTicketParam();
+      // Close-during-await guard: if the live view was closed while we fetched
+      // the short-lived ticket (≤8s), liveCleanup already tore the session down.
+      if (liveStream !== s) return;
       if (!ticketParam) {
         status.textContent = '⚠️ Could not obtain a signaling token — check connection and retry.';
         liveCleanup();
@@ -5226,7 +5214,7 @@
       themeToggle.title = isLight ? 'Switch to dark theme' : 'Switch to light theme';
       themeToggle.setAttribute('aria-label', themeToggle.title);
     }
-    if (themeColorMeta) themeColorMeta.setAttribute('content', isLight ? '#020617' : '#030712');
+    if (themeColorMeta) themeColorMeta.setAttribute('content', isLight ? '#eaf6ff' : '#030712');
   }
 
   function initTheme() {
@@ -5338,6 +5326,8 @@
         try { sessionStorage.setItem('agentWebKey', key); } catch { /* ignore */ }
         try { sessionStorage.setItem(GATE_KEY, '1'); } catch { /* ignore */ }
         hideGate();
+        refreshMcpStatus();
+        refreshStatusBar();
       } finally {
         gateChecking = false;
       }
@@ -5355,6 +5345,7 @@
   if (lockApp) {
     lockApp.addEventListener('click', () => {
       try { sessionStorage.removeItem(GATE_KEY); } catch { /* ignore */ }
+      try { sessionStorage.removeItem('agentWebKey'); } catch { /* ignore */ }
       location.reload();
     });
   }

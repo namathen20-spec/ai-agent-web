@@ -277,10 +277,7 @@ html, body {
 .tool-view__title {
   font-family: var(--font-display);
 }
-.hud-tag,
 .grid-view__status,
-.tool-view__status,
-.cc-statusbar__tag,
 .tile__index,
 .live__badge {
   text-transform: uppercase;
@@ -295,8 +292,7 @@ html, body {
 .field__label,
 .tool-controls__label,
 .chat__status,
-.chat-settings summary,
-.live-screen__bar-label {
+.chat-settings summary {
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
@@ -1103,10 +1099,6 @@ html, body {
   border-left: 1px solid var(--border-soft);
 }
 .cc-statusbar__item:first-child { padding-left: 0; border-left: none; }
-.cc-statusbar__tag {
-  color: var(--accent);
-  letter-spacing: 0.14em;
-}
 .cc-statusbar__item--right { margin-left: auto; color: var(--text-dim); }
 #statusDevice { font-family: var(--font-mono); }
 
@@ -1922,101 +1914,6 @@ select {
 .fm__pre { margin: 0; max-height: 55vh; overflow: auto; white-space: pre-wrap; word-break: break-word; }
 
 /* =====================================================================
-   Live Screen MIRROR (inline embedded iframe viewer)
-   ===================================================================== */
-.live-screen {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.live-screen__bar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-.live-screen__bar .seg { display: flex; gap: 8px; flex-wrap: wrap; }
-.live-screen__bar-label {
-  font-size: 13px; font-weight: 600; text-transform: none; letter-spacing: 0;
-  color: var(--text-dim);
-}
-.live-screen__bar-spacer { flex: 1; min-width: 8px; }
-
-/* The iframe fills this stage; the Worker's live_frame.html page already
-   object-fit:contains its portrait frame inside, so it letterboxes on both
-   sizes. Small = default (~42vh), Big = large (~85vh). */
-.live-screen__stage {
-  position: relative;
-  width: 100%;
-  max-width: 640px;
-  height: 42vh;
-  min-height: 260px;
-  margin: 0 auto;
-  border-radius: var(--radius-sm);
-  background: #000;
-  border: 1px solid var(--glass-border);
-  box-shadow: var(--shadow-soft);
-  overflow: hidden;
-}
-.live-screen--big .live-screen__stage {
-  max-width: 100%;
-  height: 85vh;
-}
-
-.live-screen__frame {
-  position: absolute;
-  inset: 0;
-  display: block;
-  width: 100%;
-  height: 100%;
-  border: 0;
-}
-
-.live-screen__placeholder {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  background: #000;
-  color: var(--text-dim);
-  text-align: center;
-  padding: 16px;
-  pointer-events: none;
-  transition: opacity 0.25s ease, visibility 0.25s ease;
-}
-.live-screen__placeholder--hidden { opacity: 0; visibility: hidden; }
-.live-screen__placeholder-icon { font-size: 28px; line-height: 1; }
-.live-screen__placeholder-text { font-size: 13.5px; }
-
-.live-screen__meta {
-  position: absolute;
-  left: 0; right: 0; bottom: 0;
-  padding: 6px 10px;
-  font-size: 12px;
-  color: var(--text-dim);
-  background: linear-gradient(to top, rgba(0, 0, 0, 0.72), rgba(0, 0, 0, 0));
-  text-align: center;
-  font-variant-numeric: tabular-nums;
-  pointer-events: none;
-}
-
-.live-screen__status {
-  font-size: 12.5px;
-  color: var(--text-dim);
-  line-height: 1.5;
-  word-break: break-word;
-}
-
-@media (max-width: 760px) {
-  .live-screen__stage { max-width: 100%; height: 48vh; min-height: 240px; }
-  .live-screen--big .live-screen__stage { height: 82vh; }
-}
-
-/* =====================================================================
    COLORFUL + VIBRANT premium pass  (Part A)  +  3D HOLOGRAPHIC live
    video  (Part B).  Appended at the end so it cleanly overrides the
    legacy HUD without disturbing any functional selector above.
@@ -2471,9 +2368,6 @@ select {
 .cc-statusbar__item {
   padding: 0 16px;
   color: var(--text-dim);
-}
-.cc-statusbar__tag {
-  color: var(--accent-2);
 }
 .cc-statusbar .dot--online {
   background: var(--ok);

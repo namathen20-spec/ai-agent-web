@@ -1,6 +1,6 @@
 /* Network-first service worker (offline fallback). */
 // Bump CACHE_NAME on every deploy so returning clients revalidate and pick up
-// newly versioned assets (index.html currently loads app.js?v=18 / style.css?v=13).
+// newly versioned assets (index.html currently loads app.js?v=65 / style.css?v=34).
 const CACHE_NAME = 'ai-agent-v8';
 const APP_SHELL = [
   './',
@@ -34,7 +34,7 @@ self.addEventListener('fetch', (event) => {
   if (request.method !== 'GET' || request.url.includes('/api/')) return;
 
   // Cache key that ignores the cache-busting `?v=` query, so a versioned
-  // request (e.g. app.js?v=18) resolves to the cached unversioned asset.
+  // request (e.g. app.js?v=65) resolves to the cached unversioned asset.
   const key = new URL(request.url);
   key.search = '';
 
