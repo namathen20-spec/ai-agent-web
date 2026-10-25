@@ -58,9 +58,9 @@
   // ---------------------------------------------------------------------------
   const TOOLS = [
     {
-      id: 'camera', emoji: '📷', label: 'CAMERA', sub: 'Back / front photo', color: '#06b6d4',
+      id: 'camera', emoji: '📷', label: 'CAMERA', sub: 'Back / front photo + video', color: '#06b6d4',
       build(scope) {
-        scope.controls.appendChild(el('span', 'tool-controls__label', 'Lens'));
+        scope.controls.appendChild(el('span', 'tool-controls__label', 'Photo — Lens'));
         let lens = 'back';
         const back = makeButton('🔘 Back', () => setLens('back'));
         const front = makeButton('🔘 Front', () => setLens('front'));
@@ -74,6 +74,27 @@
         scope.controls.appendChild(front);
         scope.controls.appendChild(
           makeButton('📸 Capture', () => scope.run('camera_link ' + lens, 'image'), 'tc-btn tc-btn--primary')
+        );
+
+        // --- Record video (cam_video <lens> <seconds> <quality>) ---
+        scope.controls.appendChild(el('span', 'tool-controls__label', 'Record video — Lens'));
+        const vLens = makeSeg(['Back', 'Front'], 0);
+        scope.controls.appendChild(vLens.wrap);
+
+        const vSeconds = makeInput('number', 'Seconds (1-300)', 30);
+        scope.controls.appendChild(makeField('Seconds', vSeconds));
+
+        scope.controls.appendChild(el('span', 'tool-controls__label', 'Quality'));
+        const vQuality = makeSeg(['480p', '720p', '1080p'], 1);
+        scope.controls.appendChild(vQuality.wrap);
+
+        scope.controls.appendChild(
+          makeButton('🎥 Record', () => {
+            const secs = clamp(parseInt(vSeconds.value, 10), 1, 300);
+            if (isNaN(secs)) { toast('Seconds must be a number (1-300)'); return; }
+            const lensArg = vLens.value === 'Front' ? 'front' : 'back';
+            scope.run('cam_video ' + lensArg + ' ' + secs + ' ' + vQuality.value, 'video');
+          }, 'tc-btn tc-btn--danger')
         );
       },
     },
@@ -467,7 +488,7 @@
   // Infer a render `kind` from a raw command string (used for History "Rerun").
   function kindForCommand(command) {
     const c = String(command || '').toLowerCase();
-    if (c.indexOf('screen_record') === 0) return 'video';
+    if (c.indexOf('screen_record') === 0 || c.indexOf('cam_video') === 0) return 'video';
     if (c.indexOf('record_audio') === 0) return 'audio';
     if (c.indexOf('camera_link') === 0 || c.indexOf('screenshot_link') === 0) return 'image';
     if (c.indexOf('live ') === 0 || c.indexOf('location') === 0) return 'link';
@@ -1878,6 +1899,15 @@
     }
   }
 
+  // Friendly progress label for runCommand's loading state ("Recording 30s…"
+  // for a cam_video command instead of the generic "Running: cam_video …").
+  function commandStatusLabel(command) {
+    const c = String(command || '').trim();
+    const m = c.match(/^cam_video\s+\S+\s+(\d+)/i);
+    if (m) return '🎥 Recording ' + m[1] + 's…';
+    return 'Running: ' + c;
+  }
+
   async function runCommand(command, kind, targetEl) {
     if (ccBusy) return;
     ccBusy = true;
@@ -1886,7 +1916,7 @@
     const out = targetEl || toolResultEl;
     out.innerHTML = '';
     const loader = el('div', 'result-loading');
-    loader.textContent = 'Running: ' + command;
+    loader.textContent = commandStatusLabel(command);
     out.appendChild(loader);
     try {
       const data = await postCommand(command);
