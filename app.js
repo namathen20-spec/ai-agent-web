@@ -4435,8 +4435,8 @@
       card.appendChild(video);
       stage.appendChild(card);
       mediaWrap.appendChild(stage);
-      const holo = enableHoloParallax(stage, card);
-      if (holo && holo.stop) liveHoloCleanup = holo.stop;
+      // (holographic mouse-tilt REMOVED — live view stays FLAT so touch coords
+      //  are exact and the screen doesn't rotate on hover.)
       fullscreenEl = stage; // fullscreen targets the whole stage (video + controls)
       video._hud = buildLiveHud(stage);
     } else {
