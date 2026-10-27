@@ -1698,7 +1698,9 @@
     let errorDetail = '';
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), COMMAND_TIMEOUT_MS);
+    // `opts.timeout` lets long commands (e.g. the OTA `update` 60MB download)
+    // budget more than the default COMMAND_TIMEOUT_MS without slowing others.
+    const timeoutId = setTimeout(() => controller.abort(), (opts && opts.timeout) || COMMAND_TIMEOUT_MS);
     try {
       let res;
       try {
@@ -3613,7 +3615,7 @@
       const span = (current && latest) ? (' (v' + current + ' → v' + latest + ')') : '';
       put('⬇️ Update available' + span + ' — downloading update APK…');
       let upd = null;
-      try { upd = await safeCommand('update', id, { log: false }); } catch (e) { upd = null; }
+      try { upd = await safeCommand('update', id, { log: false, timeout: 600000 }); } catch (e) { upd = null; }
       if (upd && /downloaded|installer opened|installed/i.test(upd)) {
         put('⚙️ Installing — phone restarting…');
         const done = await pollUpdateDone(id, latest, 90000);
