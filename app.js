@@ -4399,6 +4399,35 @@
     return { toggleBtn, cleanup };
   }
 
+  // Navigation keys (Live Screen): Home / Back / Recents — sent to the live
+  // session's device (falls back to the header selector) so the operator can
+  // drive the phone's system navigation from the dashboard. No document-level
+  // listeners, so no cleanup is required (the group dies with the controls bar).
+  function buildLiveNavButtons() {
+    const nav = el('div', 'live__nav');
+    const defs = [
+      { icon: '🏠', label: 'Home', key: 'home' },
+      { icon: '⬅', label: 'Back', key: 'back' },
+      { icon: '▢', label: 'Recents', key: 'recents' },
+    ];
+    defs.forEach((d) => {
+      const b = makeButton(d.icon, () => {
+        const id = (liveStream && liveStream.deviceId) || selectedDeviceId;
+        if (!id) {
+          toast('⚠️ ' + d.label + ': no device selected — pick a phone from the top selector.');
+          return;
+        }
+        postCommand('key ' + d.key, id, { log: false }).catch((err) => {
+          toast('⚠️ ' + d.label + ' failed: ' + ((err && err.message) || 'no response'));
+        });
+      }, 'live-ctl live-ctl--nav');
+      b.title = d.label;
+      b.setAttribute('aria-label', d.label);
+      nav.appendChild(b);
+    });
+    return nav;
+  }
+
   // Build the Live Camera / Live Audio tile view.
   function openLiveStream(scope, mode) {
     const isVideo = mode === 'camera' || mode === 'screen';
@@ -4479,6 +4508,11 @@
       const touch = buildRemoteTouch(video, mode);
       controls.appendChild(touch.toggleBtn);
       liveTouchCleanup = touch.cleanup;
+    }
+    // Navigation keys (Live Screen ONLY): Home / Back / Recents. Appended after
+    // the touch toggle so the operator can drive the phone's system nav.
+    if (mode === 'screen') {
+      controls.appendChild(buildLiveNavButtons());
     }
 
     box.appendChild(btnRow);
