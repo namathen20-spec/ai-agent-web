@@ -4499,6 +4499,28 @@
       b.setAttribute('aria-label', d.label);
       nav.appendChild(b);
     });
+    // Power (wake/lock) toggle — queries the real screen state, then wakes a
+    // sleeping phone or locks an awake one. Icon flips to hint the next action.
+    const powerBtn = makeButton('⏻', async () => {
+      const id = (liveStream && liveStream.deviceId) || selectedDeviceId;
+      if (!id) {
+        toast('⚠️ Power: no device selected — pick a phone from the top selector.');
+        return;
+      }
+      let st = null;
+      try { st = await safeCommand('screen_state', id, { log: false }); } catch (e) { st = null; }
+      const screenOn = st && /ON/i.test(st);
+      const cmd = screenOn ? 'key lock' : 'key wake';
+      postCommand(cmd, id, { log: false })
+        .then(() => {
+          powerBtn.textContent = screenOn ? '☾' : '☀';
+          powerBtn.title = 'Power — screen ' + (screenOn ? 'locked (tap to wake)' : 'on (tap to lock)');
+        })
+        .catch((err) => toast('⚠️ Power failed: ' + ((err && err.message) || 'no response')));
+    }, 'live-ctl live-ctl--nav');
+    powerBtn.title = 'Power (wake/lock)';
+    powerBtn.setAttribute('aria-label', 'Power');
+    nav.appendChild(powerBtn);
     return nav;
   }
 
