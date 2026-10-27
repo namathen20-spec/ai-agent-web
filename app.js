@@ -4263,10 +4263,14 @@
     // (falls back to the header selector); suppressed from history logging.
     function send(command) {
       lastSent = Date.now();
-      try {
-        const id = (liveStream && liveStream.deviceId) || selectedDeviceId;
-        postCommand(command, id, { log: false }).catch(() => { /* ignore */ });
-      } catch (err) { /* ignore */ }
+      const id = (liveStream && liveStream.deviceId) || selectedDeviceId;
+      if (!id) {
+        toast('⚠️ Touch: no device selected — pick a phone from the top selector.');
+        return;
+      }
+      postCommand(command, id, { log: false }).catch((err) => {
+        toast('⚠️ Touch failed: ' + ((err && err.message) || 'no response from phone'));
+      });
     }
 
     // Transient dot at the touch point (fixed-position = exact viewport point,
