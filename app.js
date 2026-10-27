@@ -4720,16 +4720,22 @@
 
       liveCleanup(); // drop any prior session
 
-      // Resolve the target phone (selected device, else first online device).
-      let devices = devicesCache;
-      if (!devices || !devices.length) {
-        try { devices = await fetchDevices(); populateDeviceSelect(devices); } catch (err) { devices = devicesCache || []; }
+      // Resolve the target phone STRICTLY: the selected device, else the SINGLE online
+      // device. With MULTIPLE phones online and none selected we do NOT silently
+      // auto-pick the first (that routed the stream + touch to the WRONG phone);
+      // we ask the operator to pick one from the header selector instead.
+      let id;
+      try {
+        id = await resolveOnlineTargetId();
+      } catch (err) {
+        if (err && err.kind === 'target') {
+          status.textContent = '⚠️ ' + (err.message || 'Multiple phones online — select a device from the top selector.');
+          return;
+        }
+        id = '';
       }
-      const id = selectedDeviceId ||
-        ((devices || []).find((d) => d.online) || {}).device_id ||
-        ((devices || [])[0] || {}).device_id || '';
       if (!id) {
-        status.textContent = 'No phone registered — wait for a phone to come online, then Start again.';
+        status.textContent = 'No phone online — wait for a phone to come online, then Start again.';
         return;
       }
 
