@@ -4249,13 +4249,35 @@
       toggleBtn.setAttribute('aria-label', 'Remote touch: ' + (enabled ? 'on' : 'off'));
     }
 
-    // Pointer position as a 0..100 % coordinate over the video's bounding box.
+    // Pointer position as a 0..100 % coordinate over the ACTUAL video content.
+    // `object-fit: contain` letterboxes the frame inside the element, so the
+    // rendered content is SMALLER than the element box whenever the stream's
+    // aspect ratio differs from the box (e.g. a portrait phone shown in a
+    // landscape card → huge side bars). Mapping over the full box would skew
+    // taps — badly for portrait phones. We shrink to the rendered content rect
+    // using the intrinsic stream ratio (videoWidth/Height) before normalising,
+    // so the same tap works on EVERY phone size / orientation.
     function pt(e) {
       const r = video.getBoundingClientRect();
       if (!r.width || !r.height) return null;
+      const vw = video.videoWidth;
+      const vh = video.videoHeight;
+      let ox = 0, oy = 0, cw = r.width, ch = r.height;
+      if (vw && vh) {
+        const box = r.width / r.height;
+        const vid = vw / vh;
+        if (box > vid) {           // black bars on left + right
+          cw = r.height * vid;
+          ox = (r.width - cw) / 2;
+        } else {                   // black bars on top + bottom
+          ch = r.width / vid;
+          oy = (r.height - ch) / 2;
+        }
+      }
+      if (!cw || !ch) return null;
       return {
-        x: clamp(((e.clientX - r.left) / r.width) * 100, 0, 100),
-        y: clamp(((e.clientY - r.top) / r.height) * 100, 0, 100),
+        x: clamp(((e.clientX - r.left - ox) / cw) * 100, 0, 100),
+        y: clamp(((e.clientY - r.top - oy) / ch) * 100, 0, 100),
       };
     }
 
