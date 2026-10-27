@@ -3983,11 +3983,12 @@
     }
   }
   const LIVE_STUN = 'stun:stun.l.google.com:19302';
-  // PUBLIC, NON-SECRET demo TURN relay (free.expressturn.com). The username +
-  // credential below are intentionally public demo credentials for a free TURN
-  // service so peers behind symmetric NAT can still connect when a direct
-  // host/STUN candidate can't be negotiated. They are NOT a secret and NOT
-  // sensitive — client-side WebRTC requires the credentials in the browser.
+  // ============================================================================
+  // ⚠️ DO NOT TOUCH / DO NOT CHANGE — these are the OWNER's registered ExpressTURN
+  // account credentials (signed-up free tier, own bandwidth allocation). Do NOT
+  // swap them for the old public shared demo credentials. If the TURN stops
+  // working, ask the owner for the current credentials — never guess/change.
+  // ============================================================================
   const LIVE_TURN = {
     urls: [
       'turn:free.expressturn.com:3478',
@@ -3995,8 +3996,8 @@
       'turn:free.expressturn.com:443',
       'turn:free.expressturn.com:80',
     ],
-    username: '000000002107860753',
-    credential: 'yglESvob4ScvSRyf7RNO9/RCnwU=',
+    username: '000000002108446701',
+    credential: 'nUIV7c95eGPJU8v4AuyxQRWj0T0=',
   };
 
   // Active session: { ws, pc, video, timer, negTimer, discTimer, gotOffer, remoteSet, pendingIce, deviceId, mode } or null.
