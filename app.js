@@ -4480,8 +4480,8 @@
   function buildLiveNavButtons() {
     const nav = el('div', 'live__nav');
     const defs = [
-      { icon: '🏠', label: 'Home', key: 'home' },
       { icon: '⬅', label: 'Back', key: 'back' },
+      { icon: '🏠', label: 'Home', key: 'home' },
       { icon: '▢', label: 'Recents', key: 'recents' },
     ];
     defs.forEach((d) => {
@@ -4598,17 +4598,17 @@
     liveControlsCleanup = ctl.cleanup;
     const controls = ctl.bar;
 
+    // Navigation keys (Live Screen ONLY): Back / Home / Recents / Power — placed in
+    // the CENTER control group (audio lives on the left, fullscreen on the right).
+    if (mode === 'screen') {
+      ctl.center.appendChild(buildLiveNavButtons());
+    }
     // Remote touch (screen + camera): tap/swipe/scroll the live <video> to send
-    // the matching relay gesture. Cleared by closeLiveView (same path as audio).
+    // the matching relay gesture. Also in the center group, after the nav keys.
     if (isVideo) {
       const touch = buildRemoteTouch(video, mode);
-      controls.appendChild(touch.toggleBtn);
+      ctl.center.appendChild(touch.toggleBtn);
       liveTouchCleanup = touch.cleanup;
-    }
-    // Navigation keys (Live Screen ONLY): Home / Back / Recents. Appended after
-    // the touch toggle so the operator can drive the phone's system nav.
-    if (mode === 'screen') {
-      controls.appendChild(buildLiveNavButtons());
     }
 
     box.appendChild(btnRow);
@@ -4627,6 +4627,10 @@
   // it also picks up the existing "tap to unmute" hint path (video.muted=false).
   function buildLiveAudioControls(video, fullscreenEl) {
     const bar = el('div', 'live__controls');
+    // Three visual groups: audio (LEFT), nav+touch (CENTER), fullscreen (RIGHT).
+    const left = el('div', 'live__controls-group live__controls-group--left');
+    const center = el('div', 'live__controls-group live__controls-group--center');
+    const right = el('div', 'live__controls-group live__controls-group--right');
 
     const speaker = makeButton('🔇', () => toggleSpeaker(), 'live-ctl live-ctl--muted');
     speaker.title = 'Unmute speaker';
@@ -4694,11 +4698,11 @@
     vol.addEventListener('input', onVolInput);
     video.addEventListener('volumechange', syncFromVideo);
 
-    bar.appendChild(speaker);
-    bar.appendChild(volDown);
-    bar.appendChild(vol);
-    bar.appendChild(volUp);
-    bar.appendChild(label);
+    left.appendChild(speaker);
+    left.appendChild(volDown);
+    left.appendChild(vol);
+    left.appendChild(volUp);
+    left.appendChild(label);
 
     // Fullscreen toggle (video mode only) — expands the live stage to fill the
     // screen; the same button exits. Uses the standard Fullscreen API with
@@ -4769,7 +4773,7 @@
       fsBtn.title = 'Expand to fullscreen (⛶)';
       fsBtn.setAttribute('aria-label', fsBtn.title);
       fsBtn.setAttribute('aria-pressed', 'false');
-      bar.appendChild(fsBtn);
+      right.appendChild(fsBtn);
 
       document.addEventListener('fullscreenchange', syncFs);
       document.addEventListener('webkitfullscreenchange', syncFs);
@@ -4779,6 +4783,9 @@
       bar.addEventListener('pointerenter', revealControls);
     }
 
+    bar.appendChild(left);
+    bar.appendChild(center);
+    bar.appendChild(right);
     syncFromVideo();
 
     // Removes every listener this view registered so repeated open/close of Live
@@ -4798,7 +4805,7 @@
       bar.removeEventListener('pointerenter', revealControls);
     }
 
-    return { bar, cleanup };
+    return { bar, cleanup, center };
   }
 
   // 3D holographic parallax: the live video plane floats inside a preserve-3d

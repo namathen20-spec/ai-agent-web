@@ -897,7 +897,7 @@ html, body {
 .live__controls {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: space-between;
   flex-wrap: wrap;
   gap: 8px;
   margin: 12px auto 0;
@@ -916,6 +916,16 @@ html, body {
   pointer-events: none;
   transform: translateY(8px);
 }
+
+/* left / center / right control groups (audio | nav+touch | fullscreen) */
+.live__controls-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.live__controls-group--left { justify-content: flex-start; flex: 0 0 auto; }
+.live__controls-group--center { justify-content: center; flex: 1 1 auto; flex-wrap: wrap; }
+.live__controls-group--right { justify-content: flex-end; flex: 0 0 auto; }
 
 .live-ctl {
   flex: 0 0 auto;
