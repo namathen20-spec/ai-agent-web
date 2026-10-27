@@ -3536,7 +3536,20 @@
       // returns (parks commands in the relay queue and starves other commands), and
       // fetching battery/storage/network for every online card on every render caused
       // a 3×N command burst that lagged the phone + burned free-tier quota.
-      if (d.online && isPrimary) loadDeviceStatus(id, status);
+      if (d.online && isPrimary) {
+        loadDeviceStatus(id, status);
+        // "Check Update now" action — primary online device only. Its own status
+        // line shows the live check/download/install result (see checkDeviceUpdate).
+        const updBox = el('div', 'device-card__update');
+        const updStatus = el('div', 'device-card__update-status', '');
+        const updBtn = makeButton('🔄 Check Update', (e) => {
+          if (e && e.stopPropagation) e.stopPropagation(); // don't trigger card "Make primary"
+          checkDeviceUpdate(id, updStatus, updBtn);
+        }, 'tc-btn device-card__update-btn');
+        updBox.appendChild(updBtn);
+        updBox.appendChild(updStatus);
+        card.appendChild(updBox);
+      }
     });
   }
 
@@ -3571,6 +3584,67 @@
     statusEl.appendChild(el('span', 'device-card__stat', 'BAT ' + (battery ? summarizeBattery(battery) : '—')));
     statusEl.appendChild(el('span', 'device-card__stat', 'STO ' + (storage ? compact(storage, 18) : '—')));
     statusEl.appendChild(el('span', 'device-card__stat', 'NET ' + (network ? compact(network, 16) : '—')));
+  }
+
+  // ---- "Check Update now" flow (device OTA self-update) -----------------------
+  // check → (if available) download + install → poll until the phone reports the
+  // new version. Live status is rendered into `statusEl` (plain text — no HTML,
+  // so the phone/relay strings can never inject markup).
+  const updateDelay = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  async function checkDeviceUpdate(id, statusEl, btn) {
+    if (!id) { statusEl.textContent = '⚠️ No device selected.'; return; }
+    const put = (msg) => { statusEl.textContent = msg; };
+    if (btn) btn.disabled = true;
+
+    put('🔍 Checking mobile update…');
+    let check = null;
+    try { check = await safeCommand('update check', id, { log: false }); } catch (e) { check = null; }
+
+    const current = (check && (check.match(/current=(\d+)/) || [])[1]) || null;
+    const latest = (check && (check.match(/latest=(\d+)/) || [])[1]) || null;
+
+    if (check && /up to date/i.test(check)) {
+      put('✅ Already updated — no new update' + (current ? ' (v' + current + ')' : ''));
+      if (btn) btn.disabled = false;
+      return;
+    }
+    if (check && /update available/i.test(check)) {
+      const span = (current && latest) ? (' (v' + current + ' → v' + latest + ')') : '';
+      put('⬇️ Update available' + span + ' — downloading update APK…');
+      let upd = null;
+      try { upd = await safeCommand('update', id, { log: false }); } catch (e) { upd = null; }
+      if (upd && /downloaded|installer opened|installed/i.test(upd)) {
+        put('⚙️ Installing — phone restarting…');
+        const done = await pollUpdateDone(id, latest, 90000);
+        put(done
+          ? '✅ New APK updated on this mobile' + (latest ? ' (v' + latest + ')' : '') + '!'
+          : '⚠️ Update triggered — check the phone.');
+      } else {
+        put('⚠️ Update failed: ' + (upd || 'no response from phone'));
+      }
+      if (btn) btn.disabled = false;
+      return;
+    }
+    put('⚠️ ' + (check || 'Update check failed — phone offline or relay busy.'));
+    if (btn) btn.disabled = false;
+  }
+
+  // Poll "update check" until the phone reports "up to date" with a version at
+  // least `latestVersion` (the install kills + restarts the app process, so the
+  // first poll may come back empty while it reconnects).
+  async function pollUpdateDone(id, latestVersion, timeoutMs) {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+      await updateDelay(5000);
+      let res = null;
+      try { res = await safeCommand('update check', id, { log: false }); } catch (e) { res = null; }
+      if (res && /up to date/i.test(res)) {
+        const cur = (res.match(/current=(\d+)/) || [])[1];
+        if (!latestVersion || (cur && Number(cur) >= Number(latestVersion))) return true;
+      }
+    }
+    return false;
   }
 
   // ---- Sound + micro-animations support (#10) --------------------------------
