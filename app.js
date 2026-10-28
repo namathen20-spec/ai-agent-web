@@ -4605,9 +4605,10 @@
     if (mode === 'screen') {
       ctl.center.appendChild(buildLiveNavButtons());
     }
-    // Remote touch (screen + camera): tap/swipe/scroll the live <video> to send
-    // the matching relay gesture. Also in the center group, after the nav keys.
-    if (isVideo) {
+    // Remote touch (Live SCREEN ONLY): tap/swipe/scroll the live <video> to send the
+    // matching relay gesture. Live CAMERA deliberately has NO touch (the camera
+    // stream is view-only) — the toggle + gesture listeners are never built.
+    if (mode === 'screen') {
       const touch = buildRemoteTouch(video, mode);
       ctl.center.appendChild(touch.toggleBtn);
       liveTouchCleanup = touch.cleanup;
