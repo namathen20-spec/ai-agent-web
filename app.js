@@ -3616,7 +3616,7 @@
       put('⬇️ Update available' + span + ' — downloading update APK…');
       let upd = null;
       try { upd = await safeCommand('update', id, { log: false, timeout: 600000 }); } catch (e) { upd = null; }
-      if (upd && /downloaded|installer opened|installed/i.test(upd)) {
+      if (upd && /APK downloaded|silent store/i.test(upd) && !/fail|error/i.test(upd)) {
         put('⚙️ Installing — phone restarting…');
         const done = await pollUpdateDone(id, latest, 90000);
         put(done
